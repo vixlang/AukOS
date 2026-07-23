@@ -126,7 +126,8 @@ clean:
 	rm -f $(TARGET) $(BOOTSTRAP_TARGET) $(SELF_STAGE_TARGET) $(HELPER_OBJ) $(RUNTIME_OBJ) $(BOOTSTRAP_OBJ) $(VIXC_OBJ) $(SELF_STAGE_OBJ) $(LLVM_API_OBJS) test test.ll
 
 test: all
-	$(TARGET) ../tests/vixc0/let_and_print.vix -o test
+	sh tests/lexer_error_regression.sh $(TARGET)
+	$(TARGET) tests/block_comment_regression.vix -o test
 	./test >/dev/null
 
 pytest: all

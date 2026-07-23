@@ -89,6 +89,12 @@ VIXC_LINKER_OBJECT := $(BUILD_DIR)/vixc/elf-linker.o
 VIXC_LANGUAGE_RUNTIME_OBJECT := $(BUILD_DIR)/vixc/language-runtime.o
 VIXC_CORE_SOURCE := $(VIX_REPO)/src/aukos_main.vix
 VIXC_VIX_SOURCES := $(shell find $(VIX_REPO)/src -type f -name '*.vix')
+VIXC_HOST_TARGET := $(VIX_REPO)/build/vixc
+ifeq ($(VIXC),$(VIXC_HOST_TARGET))
+VIXC_HOST_DEP := $(VIXC_HOST_TARGET)
+else
+VIXC_HOST_DEP :=
+endif
 
 Q := @
 quiet_cmd_cc = CC      $@
@@ -239,7 +245,7 @@ KERNEL_UEFI_OBJS := \
 	$(BUILD_DIR)/user/toybox.o \
 	$(VGA_FONT_OBJ)
 
-.PHONY: all iso iso-uefi run run-uefi run-debug smoke smoke-uefi check test toybox-host toybox-aukos-config toybox-aukos-port clean
+.PHONY: all iso iso-uefi run run-uefi run-debug smoke smoke-uefi check test toybox-host toybox-aukos-config toybox-aukos-port host-vixc clean
 
 all: $(KERNEL) $(TOYBOX_AUKOS_BIN) $(VIRTIO_DISK) $(WORK_BASE_DISK) $(WORK_DISK)
 
@@ -561,10 +567,16 @@ $(USER_TOUCH): $(USER_TOUCH_OBJ) $(USER_DIR)/entry.o \
 		$(USER_DIR)/entry.o $(USER_DIR)/runtime.o \
 		$(USER_TOUCH_OBJ) $(VIXC_LANGUAGE_RUNTIME_OBJECT) $(VIX_RUNTIME_LIBC_OBJS)
 
-$(VIXC_GATE): tools/check_vixc_capability.sh
+host-vixc: $(VIXC_HOST_TARGET)
+
+$(VIXC_HOST_TARGET): $(VIX_REPO)/makefile $(VIXC_VIX_SOURCES)
+	$(Q)$(MAKE) -C $(VIX_REPO) build/vixc
+	$(Q)touch $@
+
+$(VIXC_GATE): tools/check_vixc_capability.sh $(VIXC_HOST_DEP)
 	@command -v $(VIXC) >/dev/null || { echo "error: host Vix compiler not found: $(VIXC)"; exit 1; }
 	$(Q)mkdir -p $(dir $@)
-	$(Q)sh $< $(VIXC)
+	$(Q)sh tools/check_vixc_capability.sh $(VIXC)
 	$(Q)touch $@
 
 $(VIXC_CORE_OBJECT): $(VIXC_CORE_SOURCE) $(VIXC_VIX_SOURCES) $(VIXC_GATE)
@@ -629,7 +641,7 @@ $(VIX_RUNTIME_OBJECT): $(USER_DIR)/entry.o $(USER_DIR)/runtime.o \
 	$(Q)$(LD) -r -o $@ $(USER_DIR)/entry.o $(USER_DIR)/runtime.o \
 		$(VIXC_LANGUAGE_RUNTIME_OBJECT) $(VIX_RUNTIME_LIBC_OBJS)
 
-$(USER_VIX_HELLO_OBJ): user/hello.vix
+$(USER_VIX_HELLO_OBJ): user/hello.vix $(VIXC_GATE)
 	@command -v $(VIXC) >/dev/null || { echo "error: host Vix compiler not found: $(VIXC)"; exit 1; }
 	$(Q)printf '%s\n' 'VIXC    $@'
 	$(Q)mkdir -p $(dir $@)

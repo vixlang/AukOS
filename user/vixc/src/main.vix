@@ -221,7 +221,7 @@ fn run_mode(mode: string, src: string, filename: string, emit: string, output: s
     let lexer_error = lexer_validate(src)
     if (lexer_error != "")
     {
-        info_error(lexer_error)
+        diag_print(lexer_error)
         return mode_failure()
     }
 
