@@ -1,0 +1,181 @@
+#[no_main]
+
+extern "C"
+{
+    fn malloc(size: usize): string
+    fn vix_reset_vars()
+    fn vix_set_var_type(name: string, ty: string)
+    fn vix_get_var_type(name: string): string
+    fn vix_reset_function_sigs()
+    fn vix_register_function_sig_vararg(name: string, ret_ty: string, param_types: ptr, param_count: i32, is_var_arg: i32)
+    fn vix_get_function_return_type(name: string): string
+    fn vix_get_function_param_type(name: string, index: i32): string
+    fn vix_get_function_param_count(name: string): i32
+    fn vix_get_function_is_var_arg(name: string): i32
+    fn vix_reset_struct_sigs()
+    fn vix_declare_struct_sig(name: string)
+    fn vix_register_struct_sig(name: string, field_names: ptr, field_types: ptr, field_count: i32)
+    fn vix_is_struct_type(name: string): i32
+    fn vix_get_struct_field_index(struct_name: string, field_name: string): i32
+    fn vix_get_struct_field_type(struct_name: string, field_name: string): string
+}
+
+pub fn vararg_promoted_type(ty: string): string
+{
+    if (ty == "f32") { return "f64" }
+    if (ty == "bool" or ty == "i8" or ty == "u8" or ty == "char") { return "i32" }
+    return ty
+}
+
+pub fn reset_local_vars() { vix_reset_vars() }
+pub fn set_local_var_type(name: string, ty: string) { vix_set_var_type(name, ty) }
+pub fn get_local_var_type(name: string): string
+{
+    let ty = vix_get_var_type(name)
+    if (ty == nil) { return "i32" }
+    return ty
+}
+
+pub fn reset_function_sigs() { vix_reset_function_sigs() }
+pub fn register_function_sig(name: string, ret_ty: string, param_types: [string])
+{
+    register_function_sig_vararg(name, ret_ty, param_types, 0)
+}
+pub fn register_function_sig_vararg(name: string, ret_ty: string, param_types: [string], is_var_arg: i32)
+{
+    vix_register_function_sig_vararg(name, ret_ty, param_types, param_types.length, is_var_arg)
+}
+pub fn get_function_return_type(name: string): string { return vix_get_function_return_type(name) }
+pub fn get_function_param_type(name: string, index: i32): string { return vix_get_function_param_type(name, index) }
+pub fn get_function_param_count(name: string): i32 { return vix_get_function_param_count(name) }
+pub fn get_function_is_var_arg(name: string): i32 { return vix_get_function_is_var_arg(name) }
+
+pub fn reset_struct_sigs() { vix_reset_struct_sigs() }
+pub fn declare_struct_sig(name: string) { vix_declare_struct_sig(name) }
+pub fn register_struct_sig(name: string, field_names: [string], field_types: [string])
+{
+    vix_register_struct_sig(name, field_names, field_types, field_names.length)
+}
+
+pub fn type_text_is_array(ty: string): i32
+{
+    if (ty.length > 0 and ty[0] == '[') { return 1 }
+    return 0
+}
+
+pub fn type_array_element(ty: string): string
+{
+    if (type_text_is_array(ty) == 0 or ty.length <= 2) { return "unknown" }
+    let mut result = ""
+    let mut end = ty.length - 1
+    for (i in 1 .. ty.length - 1) { if (ty[i] == '*') { end = i } }
+    for (i in 1 .. end)
+    {
+        let s: string = malloc(2)
+        s[0] = ty[i]
+        s[1] = 0
+        result = result + s
+    }
+    return result
+}
+
+pub fn type_text_is_fixed_array(ty: string): i32
+{
+    if (type_text_is_array(ty) == 0) { return 0 }
+    for (i in 1 .. ty.length - 1) { if (ty[i] == '*') { return 1 } }
+    return 0
+}
+
+pub fn type_fixed_array_count(ty: string): i32
+{
+    let mut count = 0
+    let mut in_count = 0
+    for (i in 1 .. ty.length - 1)
+    {
+        if (ty[i] == '*') { in_count = 1 }
+        elif (in_count == 1 and ty[i] >= '0' and ty[i] <= '9')
+        {
+            count = count * 10 + (ty[i] - '0')
+        }
+    }
+    return count
+}
+
+pub fn is_ptr_to_struct(ty: string): i32
+{
+    if (ty.length > 4 and ty[0] == 'p' and ty[1] == 't' and ty[2] == 'r' and ty[3] == ':') { return 1 }
+    return 0
+}
+
+pub fn strip_ptr_prefix(ty: string): string
+{
+    if (is_ptr_to_struct(ty) == 0) { return ty }
+    let mut result = ""
+    for (i in 4 .. ty.length)
+    {
+        let s: string = malloc(2)
+        s[0] = ty[i]
+        s[1] = 0
+        result = result + s
+    }
+    return result
+}
+
+pub fn type_text_is_ptr_to_array(ty: string): i32
+{
+    if (is_ptr_to_struct(ty) == 0) { return 0 }
+    return type_text_is_array(strip_ptr_prefix(ty))
+}
+
+pub fn type_text_index_element(ty: string): string
+{
+    if (type_text_is_array(ty) == 1) { return type_array_element(ty) }
+    if (type_text_is_ptr_to_array(ty) == 1) { return type_array_element(strip_ptr_prefix(ty)) }
+    if (ty == "string" or ty == "ptr") { return "i8" }
+    if (is_ptr_to_struct(ty) == 1) { return strip_ptr_prefix(ty) }
+    return "i32"
+}
+
+pub fn type_text_is_option(ty: string): i32
+{
+    if (ty.length > 7 and ty[0] == 'O' and ty[1] == 'p' and ty[2] == 't' and ty[3] == 'i' and ty[4] == 'o' and ty[5] == 'n' and ty[6] == '[') { return 1 }
+    return 0
+}
+
+pub fn type_text_base_name_builder(ty: string): string
+{
+    let mut result = ""
+    for (i in 0 .. ty.length)
+    {
+        if (ty[i] == ':' or ty[i] == '[') { return result }
+        let s: string = malloc(2)
+        s[0] = ty[i]
+        s[1] = 0
+        result = result + s
+    }
+    return result
+}
+
+pub fn type_text_option_inner(ty: string): string
+{
+    if (type_text_is_option(ty) == 0) { return "unknown" }
+    let mut result = ""
+    for (i in 7 .. ty.length - 1)
+    {
+        let s: string = malloc(2)
+        s[0] = ty[i]
+        s[1] = 0
+        result = result + s
+    }
+    return result
+}
+
+pub fn type_is_struct(name: string): i32 { return vix_is_struct_type(name) }
+pub fn get_struct_field_index(struct_name: string, field_name: string): i32
+{
+    return vix_get_struct_field_index(struct_name, field_name)
+}
+pub fn get_struct_field_type(struct_name: string, field_name: string): string
+{
+    return vix_get_struct_field_type(struct_name, field_name)
+}

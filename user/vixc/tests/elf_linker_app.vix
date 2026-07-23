@@ -1,0 +1,11 @@
+fn local_result(value: i32): i32
+{
+    return value + 2
+}
+
+fn main(): i32
+{
+    let marker = "linked"
+    if (local_result(40) == 42) { return 42 }
+    return marker[0]
+}

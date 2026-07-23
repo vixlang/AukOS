@@ -1,0 +1,4 @@
+#[no_main]
+
+pub fn vixc_version(): string { return "0.4.6" }
+pub fn vixc_version_banner(): string { return "vixc " + vixc_version() }

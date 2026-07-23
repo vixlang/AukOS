@@ -1,0 +1,862 @@
+extern "C"
+{
+    fn printf(format: string, ...): i32
+    fn getchar(): i32
+    fn malloc(size: usize): string
+    fn fopen(path: string, mode: string): ptr
+    fn fclose(file: ptr): i32
+    fn getc(file: ptr): i32
+    fn aukos_vix_open(path: string, flags: i32, mode: i32): i32
+    fn aukos_vix_write_fd(fd: i32, data: string, size: usize): i64
+    fn aukos_vix_fsync(fd: i32): i32
+    fn aukos_vix_close(fd: i32): i32
+    fn aukos_vix_isatty(fd: i32): i32
+    fn aukos_vix_tty_begin_raw(): i32
+    fn aukos_vix_tty_end_raw(): i32
+    fn aukos_vix_tty_size(rows: &i32, columns: &i32): i32
+}
+
+type InputLine = struct {
+    text: string,
+    eof: i32,
+    overflow: i32
+}
+
+type Address = struct {
+    value: i32,
+    next: i32,
+    present: i32
+}
+
+type Editor = struct {
+    lines: [string],
+    line_count: i32,
+    current: i32,
+    filename: string,
+    dirty: i32,
+    running: i32,
+    cursor_column: i32,
+    top_line: i32,
+    left_column: i32,
+    mode: i32,
+    pending: i32,
+    command: string,
+    message: string,
+    screen_rows: i32,
+    screen_columns: i32
+}
+
+fn ed_char(value: i32): string
+{
+    let text = malloc(2)
+    if (text == nil) { return "" }
+    text[0] = value
+    text[1] = 0
+    return text
+}
+
+fn read_input_line(): InputLine
+{
+    let mut text = ""
+    let mut done = 0
+    let mut overflow = 0
+    while (done == 0)
+    {
+        let value = getchar()
+        if (value < 0)
+        {
+            return InputLine{ text: text, eof: 1, overflow: overflow }
+        }
+        if (value == 10) { done = 1 }
+        elif (value != 13)
+        {
+            if (text.length < 4096) { text = text + ed_char(value) }
+            else { overflow = 1 }
+        }
+    }
+    return InputLine{ text: text, eof: 0, overflow: overflow }
+}
+
+fn string_tail(text: string, start: i32): string
+{
+    let mut index = start
+    while (index < text.length and (text[index] == ' ' or text[index] == 9))
+    {
+        index += 1
+    }
+    let mut result = ""
+    while (index < text.length)
+    {
+        result = result + ed_char(text[index])
+        index += 1
+    }
+    return result
+}
+
+fn ensure_line_slot(editor: &Editor): i32
+{
+    if (editor.line_count >= 4096)
+    {
+        printf("? line limit reached\n")
+        return -1
+    }
+    if (editor.line_count == editor.lines.length) { editor.lines.push("") }
+    return 0
+}
+
+fn insert_line(editor: &Editor, position: i32, text: string): i32
+{
+    if (ensure_line_slot(editor) != 0) { return -1 }
+    let mut target = position
+    if (target < 0) { target = 0 }
+    if (target > editor.line_count) { target = editor.line_count }
+    let mut index = editor.line_count
+    while (index > target)
+    {
+        editor.lines[index] = editor.lines[index - 1]
+        index -= 1
+    }
+    editor.lines[target] = text
+    editor.line_count += 1
+    editor.current = target + 1
+    return 0
+}
+
+fn clear_buffer(editor: &Editor)
+{
+    editor.line_count = 0
+    editor.current = 0
+    editor.cursor_column = 0
+    editor.top_line = 1
+    editor.left_column = 0
+    editor.dirty = 0
+}
+
+fn load_file(editor: &Editor, path: string): i32
+{
+    let file = fopen(path, "r")
+    clear_buffer(editor)
+    editor.filename = path
+    if (file == nil)
+    {
+        printf("%s: new file\n", path)
+        return 0
+    }
+
+    let mut line = ""
+    let mut failed = 0
+    let mut value = getc(file)
+    while (value >= 0 and failed == 0)
+    {
+        if (value == 10)
+        {
+            if (insert_line(editor, editor.line_count, line) != 0) { failed = 1 }
+            line = ""
+        }
+        elif (value != 13)
+        {
+            if (line.length >= 4096) { failed = 1 }
+            else { line = line + ed_char(value) }
+        }
+        value = getc(file)
+    }
+    if (failed == 0 and line.length > 0)
+    {
+        if (insert_line(editor, editor.line_count, line) != 0) { failed = 1 }
+    }
+    if (fclose(file) != 0) { failed = 1 }
+    editor.current = editor.line_count
+    editor.dirty = 0
+    if (failed != 0)
+    {
+        printf("? cannot read %s\n", path)
+        return -1
+    }
+    printf("%d lines\n", editor.line_count)
+    return 0
+}
+
+fn write_all(fd: i32, text: string): i32
+{
+    if (text.length == 0) { return 0 }
+    let count = aukos_vix_write_fd(fd, text, text.length)
+    return if (count == text.length) { 0 } else { -1 }
+}
+
+fn write_file(editor: &Editor, path: string): i32
+{
+    let fd = aukos_vix_open(path, 577, 438)
+    if (fd < 0)
+    {
+        printf("? cannot write %s\n", path)
+        return -1
+    }
+    let mut bytes = 0
+    let mut failed = 0
+    let mut index = 0
+    while (index < editor.line_count and failed == 0)
+    {
+        if (write_all(fd, editor.lines[index]) != 0 or
+            aukos_vix_write_fd(fd, "\n", 1) != 1)
+        {
+            failed = 1
+        }
+        else { bytes += editor.lines[index].length + 1 }
+        index += 1
+    }
+    if (failed == 0 and aukos_vix_fsync(fd) != 0) { failed = 1 }
+    if (aukos_vix_close(fd) != 0) { failed = 1 }
+    if (failed != 0)
+    {
+        printf("? write failed: %s\n", path)
+        return -1
+    }
+    editor.filename = path
+    editor.dirty = 0
+    printf("%d bytes\n", bytes)
+    return 0
+}
+
+fn parse_address(editor: &Editor, command: string): Address
+{
+    if (command.length == 0)
+    {
+        return Address{ value: editor.current, next: 0, present: 0 }
+    }
+    if (command[0] == '.')
+    {
+        return Address{ value: editor.current, next: 1, present: 1 }
+    }
+    if (command[0] == '$')
+    {
+        return Address{ value: editor.line_count, next: 1, present: 1 }
+    }
+    let mut index = 0
+    let mut value = 0
+    while (index < command.length and command[index] >= '0' and command[index] <= '9')
+    {
+        value = value * 10 + command[index] - '0'
+        index += 1
+    }
+    if (index == 0)
+    {
+        return Address{ value: editor.current, next: 0, present: 0 }
+    }
+    return Address{ value: value, next: index, present: 1 }
+}
+
+fn valid_address(editor: &Editor, address: i32): i32
+{
+    if (address < 1 or address > editor.line_count)
+    {
+        printf("? invalid address\n")
+        return 0
+    }
+    return 1
+}
+
+fn print_line(editor: &Editor, address: i32, numbered: i32): i32
+{
+    if (valid_address(editor, address) == 0) { return -1 }
+    if (numbered == 1) { printf("%d\t%s\n", address, editor.lines[address - 1]) }
+    else { printf("%s\n", editor.lines[address - 1]) }
+    editor.current = address
+    return 0
+}
+
+fn print_all(editor: &Editor, numbered: i32): i32
+{
+    if (editor.line_count == 0)
+    {
+        printf("? empty buffer\n")
+        return -1
+    }
+    for (address in 1 .. editor.line_count + 1)
+    {
+        print_line(editor, address, numbered)
+    }
+    return 0
+}
+
+fn delete_line(editor: &Editor, address: i32): i32
+{
+    if (valid_address(editor, address) == 0) { return -1 }
+    let mut index = address - 1
+    while (index + 1 < editor.line_count)
+    {
+        editor.lines[index] = editor.lines[index + 1]
+        index += 1
+    }
+    editor.line_count -= 1
+    if (editor.line_count == 0) { editor.current = 0 }
+    elif (address > editor.line_count) { editor.current = editor.line_count }
+    else { editor.current = address }
+    editor.dirty = 1
+    return 0
+}
+
+fn input_block(editor: &Editor, position: i32): i32
+{
+    let mut target = position
+    let mut added = 0
+    let mut done = 0
+    while (done == 0)
+    {
+        let input = read_input_line()
+        if (input.overflow != 0)
+        {
+            printf("? input line too long\n")
+            return -1
+        }
+        if (input.text == ".") { done = 1 }
+        elif (input.eof != 0) { done = 1 }
+        else
+        {
+            if (insert_line(editor, target, input.text) != 0) { return -1 }
+            target += 1
+            added += 1
+        }
+        if (input.eof != 0) { done = 1 }
+    }
+    if (added > 0) { editor.dirty = 1 }
+    return 0
+}
+
+fn print_help()
+{
+    printf("ed commands:\n")
+    printf("  a / i       append after or insert before current line\n")
+    printf("  p / n / ,p  print current, numbered current, or all lines\n")
+    printf("  Nd / Np     delete or print line N; . and $ are addresses\n")
+    printf("  w [file]    write buffer; e/E file loads normally/forcibly\n")
+    printf("  f [file]    show or set filename; = shows line count\n")
+    printf("  q / Q       quit normally or discard unsaved changes\n")
+}
+
+fn string_slice(text: string, start: i32, end: i32): string
+{
+    let mut first = start
+    let mut last = end
+    if (first < 0) { first = 0 }
+    if (last > text.length) { last = text.length }
+    if (last < first) { last = first }
+    let mut result = ""
+    for (index in first .. last) { result = result + ed_char(text[index]) }
+    return result
+}
+
+fn visual_text_rows(editor: &Editor): i32
+{
+    let rows = editor.screen_rows - 2
+    return if (rows < 1) { 1 } else { rows }
+}
+
+fn visual_current_length(editor: &Editor): i32
+{
+    if (editor.current < 1 or editor.current > editor.line_count) { return 0 }
+    return editor.lines[editor.current - 1].length
+}
+
+fn visual_clamp(editor: &Editor)
+{
+    if (editor.line_count == 0)
+    {
+        editor.current = 0
+        editor.cursor_column = 0
+        editor.top_line = 1
+        editor.left_column = 0
+        return
+    }
+    if (editor.current < 1) { editor.current = 1 }
+    if (editor.current > editor.line_count) { editor.current = editor.line_count }
+    let length = visual_current_length(editor)
+    if (editor.cursor_column < 0) { editor.cursor_column = 0 }
+    if (editor.cursor_column > length) { editor.cursor_column = length }
+
+    let text_rows = visual_text_rows(editor)
+    if (editor.current < editor.top_line) { editor.top_line = editor.current }
+    if (editor.current >= editor.top_line + text_rows)
+    {
+        editor.top_line = editor.current - text_rows + 1
+    }
+    if (editor.cursor_column < editor.left_column)
+    {
+        editor.left_column = editor.cursor_column
+    }
+    if (editor.cursor_column >= editor.left_column + editor.screen_columns)
+    {
+        editor.left_column = editor.cursor_column - editor.screen_columns + 1
+    }
+}
+
+fn terminal_move(row: i32, column: i32)
+{
+    printf("%c[%d;%dH", 27, row, column)
+}
+
+fn terminal_clear_line() { printf("%c[K", 27) }
+
+fn visual_draw(editor: &Editor)
+{
+    visual_clamp(editor)
+    let text_rows = visual_text_rows(editor)
+    let mut screen_row = 1
+    while (screen_row <= text_rows)
+    {
+        terminal_move(screen_row, 1)
+        terminal_clear_line()
+        let line_number = editor.top_line + screen_row - 1
+        if (line_number <= editor.line_count)
+        {
+            let line = editor.lines[line_number - 1]
+            let end = editor.left_column + editor.screen_columns
+            if (editor.left_column < line.length)
+            {
+                printf("%s", string_slice(line, editor.left_column, end))
+            }
+        }
+        else { printf("~") }
+        screen_row += 1
+    }
+
+    terminal_move(editor.screen_rows - 1, 1)
+    terminal_clear_line()
+    printf("%c[7m", 27)
+    let name = if (editor.filename == "") { "[No Name]" } else { editor.filename }
+    let changed = if (editor.dirty != 0) { " [+]" } else { "" }
+    let mode_name = if (editor.mode == 1) { "INSERT" } elif (editor.mode == 2) { "COMMAND" } else { "NORMAL" }
+    printf(" %s%s  -- %s --  %d/%d  col %d ", name, changed, mode_name,
+           editor.current, editor.line_count, editor.cursor_column + 1)
+    printf("%c[0m", 27)
+
+    terminal_move(editor.screen_rows, 1)
+    terminal_clear_line()
+    if (editor.mode == 2) { printf(":%s", editor.command) }
+    elif (editor.message != "") { printf("%s", editor.message) }
+
+    let cursor_row = if (editor.current == 0) { 1 } else { editor.current - editor.top_line + 1 }
+    let cursor_column = editor.cursor_column - editor.left_column + 1
+    terminal_move(cursor_row, cursor_column)
+}
+
+fn visual_ensure_line(editor: &Editor): i32
+{
+    if (editor.line_count == 0)
+    {
+        if (insert_line(editor, 0, "") != 0) { return -1 }
+        editor.dirty = 1
+    }
+    return 0
+}
+
+fn visual_insert_character(editor: &Editor, value: i32): i32
+{
+    if (visual_ensure_line(editor) != 0) { return -1 }
+    let line = editor.lines[editor.current - 1]
+    if (line.length >= 4096)
+    {
+        editor.message = "line limit reached"
+        return -1
+    }
+    let before = string_slice(line, 0, editor.cursor_column)
+    let after = string_slice(line, editor.cursor_column, line.length)
+    editor.lines[editor.current - 1] = before + ed_char(value) + after
+    editor.cursor_column += 1
+    editor.dirty = 1
+    return 0
+}
+
+fn visual_delete_character(editor: &Editor): i32
+{
+    if (editor.line_count == 0) { return -1 }
+    let line = editor.lines[editor.current - 1]
+    if (editor.cursor_column >= line.length) { return -1 }
+    editor.lines[editor.current - 1] =
+        string_slice(line, 0, editor.cursor_column) +
+        string_slice(line, editor.cursor_column + 1, line.length)
+    editor.dirty = 1
+    return 0
+}
+
+fn visual_split_line(editor: &Editor): i32
+{
+    if (visual_ensure_line(editor) != 0) { return -1 }
+    let line = editor.lines[editor.current - 1]
+    let before = string_slice(line, 0, editor.cursor_column)
+    let after = string_slice(line, editor.cursor_column, line.length)
+    editor.lines[editor.current - 1] = before
+    if (insert_line(editor, editor.current, after) != 0) { return -1 }
+    editor.cursor_column = 0
+    editor.dirty = 1
+    return 0
+}
+
+fn visual_backspace(editor: &Editor): i32
+{
+    if (editor.line_count == 0) { return -1 }
+    if (editor.cursor_column > 0)
+    {
+        editor.cursor_column -= 1
+        return visual_delete_character(editor)
+    }
+    if (editor.current <= 1) { return -1 }
+    let previous_length = editor.lines[editor.current - 2].length
+    let combined = editor.lines[editor.current - 2] + editor.lines[editor.current - 1]
+    if (combined.length > 4096) { editor.message = "line limit reached"; return -1 }
+    let removed = editor.current
+    if (delete_line(editor, removed) != 0) { return -1 }
+    editor.lines[editor.current - 1] = combined
+    editor.cursor_column = previous_length
+    editor.dirty = 1
+    return 0
+}
+
+fn visual_delete_line(editor: &Editor): i32
+{
+    if (editor.line_count == 0) { return -1 }
+    let result = delete_line(editor, editor.current)
+    editor.cursor_column = 0
+    return result
+}
+
+fn visual_open_line(editor: &Editor, below: i32): i32
+{
+    let position = if (editor.line_count == 0) { 0 }
+                   elif (below != 0) { editor.current }
+                   else { editor.current - 1 }
+    if (insert_line(editor, position, "") != 0) { return -1 }
+    editor.cursor_column = 0
+    editor.dirty = 1
+    editor.mode = 1
+    return 0
+}
+
+fn visual_command(editor: &Editor): i32
+{
+    let command = editor.command
+    editor.mode = 0
+    editor.command = ""
+    if (command == "q")
+    {
+        if (editor.dirty != 0) { editor.message = "No write since last change (use :q!)"; return -1 }
+        editor.running = 0
+        return 0
+    }
+    if (command == "q!") { editor.running = 0; return 0 }
+    if (command == "w" or command == "wq")
+    {
+        if (editor.filename == "") { editor.message = "No file name"; return -1 }
+        if (write_file(editor, editor.filename) != 0) { editor.message = "Write failed"; return -1 }
+        editor.message = "written"
+        if (command == "wq") { editor.running = 0 }
+        return 0
+    }
+    if (command.length > 2 and command[0] == 'w' and command[1] == ' ')
+    {
+        let path = string_tail(command, 1)
+        if (write_file(editor, path) != 0) { editor.message = "Write failed"; return -1 }
+        editor.message = "written"
+        return 0
+    }
+    if (command.length > 2 and command[0] == 'e' and command[1] == ' ')
+    {
+        if (editor.dirty != 0) { editor.message = "No write since last change"; return -1 }
+        return load_file(editor, string_tail(command, 1))
+    }
+    if (command == "help")
+    {
+        editor.message = "Normal: hjkl i a o x dd gg G; commands: :w :q :wq :q! :e"
+        return 0
+    }
+    editor.message = "Not an editor command"
+    return -1
+}
+
+fn visual_normal_key(editor: &Editor, key: i32)
+{
+    editor.message = ""
+    if (editor.pending == 1)
+    {
+        editor.pending = 0
+        if (key == 'd') { visual_delete_line(editor); return }
+    }
+    elif (editor.pending == 2)
+    {
+        editor.pending = 0
+        if (key == 'g' and editor.line_count > 0)
+        {
+            editor.current = 1
+            editor.cursor_column = 0
+            return
+        }
+    }
+    if (key == 'h') { editor.cursor_column -= 1 }
+    elif (key == 'l') { editor.cursor_column += 1 }
+    elif (key == 'j') { editor.current += 1 }
+    elif (key == 'k') { editor.current -= 1 }
+    elif (key == '0') { editor.cursor_column = 0 }
+    elif (key == '$') { editor.cursor_column = visual_current_length(editor) }
+    elif (key == 'G')
+    {
+        editor.current = editor.line_count
+        editor.cursor_column = 0
+    }
+    elif (key == 'g') { editor.pending = 2; editor.message = "g" }
+    elif (key == 'd') { editor.pending = 1; editor.message = "d" }
+    elif (key == 'x') { visual_delete_character(editor) }
+    elif (key == 'i') { if (visual_ensure_line(editor) == 0) { editor.mode = 1 } }
+    elif (key == 'a')
+    {
+        if (visual_ensure_line(editor) == 0)
+        {
+            if (editor.cursor_column < visual_current_length(editor)) { editor.cursor_column += 1 }
+            editor.mode = 1
+        }
+    }
+    elif (key == 'o') { visual_open_line(editor, 1) }
+    elif (key == 'O') { visual_open_line(editor, 0) }
+    elif (key == ':')
+    {
+        editor.mode = 2
+        editor.command = ""
+    }
+    visual_clamp(editor)
+}
+
+fn visual_insert_key(editor: &Editor, key: i32)
+{
+    editor.message = ""
+    if (key == 27) { editor.mode = 0; return }
+    if (key == 8 or key == 127) { visual_backspace(editor); return }
+    if (key == 10 or key == 13) { visual_split_line(editor); return }
+    if (key == 9)
+    {
+        for (index in 0 .. 4) { visual_insert_character(editor, ' ') }
+        return
+    }
+    if (key >= 32 and key <= 126) { visual_insert_character(editor, key) }
+}
+
+fn visual_command_key(editor: &Editor, key: i32)
+{
+    if (key == 27)
+    {
+        editor.mode = 0
+        editor.command = ""
+        return
+    }
+    if (key == 8 or key == 127)
+    {
+        if (editor.command.length > 0)
+        {
+            editor.command = string_slice(editor.command, 0, editor.command.length - 1)
+        }
+        return
+    }
+    if (key == 10 or key == 13) { visual_command(editor); return }
+    if (key >= 32 and key <= 126 and editor.command.length < 200)
+    {
+        editor.command = editor.command + ed_char(key)
+    }
+}
+
+fn visual_loop(editor: &Editor): i32
+{
+    let mut rows = 25
+    let mut columns = 80
+    aukos_vix_tty_size(&rows, &columns)
+    editor.screen_rows = rows
+    editor.screen_columns = columns
+    if (editor.screen_rows < 3) { editor.screen_rows = 25 }
+    if (editor.screen_columns < 20) { editor.screen_columns = 80 }
+    editor.message = "Vix visual ed: i to insert, :help for commands"
+    if (aukos_vix_tty_begin_raw() != 0) { return -1 }
+    printf("%c[2J%c[H", 27, 27)
+    while (editor.running != 0)
+    {
+        visual_draw(editor)
+        let key = getchar()
+        if (key < 0) { editor.running = 0 }
+        elif (editor.mode == 1) { visual_insert_key(editor, key) }
+        elif (editor.mode == 2) { visual_command_key(editor, key) }
+        else { visual_normal_key(editor, key) }
+    }
+    aukos_vix_tty_end_raw()
+    printf("%c[0m%c[2J%c[H", 27, 27, 27)
+    return 0
+}
+
+fn visual_smoke(editor: &Editor): i32
+{
+    let mut rows = 25
+    let mut columns = 80
+    if (aukos_vix_isatty(0) == 0 or aukos_vix_tty_begin_raw() != 0)
+    {
+        printf("[ed_visual_test] FAIL tty\n")
+        return 1
+    }
+    aukos_vix_tty_size(&rows, &columns)
+    editor.screen_rows = rows
+    editor.screen_columns = columns
+    editor.message = "visual smoke"
+    printf("%c[2J%c[H", 27, 27)
+    visual_draw(editor)
+
+    visual_normal_key(editor, 'i')
+    let first = "abc"
+    for (index in 0 .. first.length) { visual_insert_key(editor, first[index]) }
+    visual_insert_key(editor, 10)
+    let second = "def"
+    for (index in 0 .. second.length) { visual_insert_key(editor, second[index]) }
+    visual_insert_key(editor, 27)
+    visual_normal_key(editor, 'k')
+    visual_normal_key(editor, '0')
+    visual_normal_key(editor, 'x')
+    editor.mode = 2
+    editor.command = "w /work/visual-smoke"
+    let result = visual_command(editor)
+    visual_draw(editor)
+    let restored = aukos_vix_tty_end_raw()
+    printf("%c[0m%c[2J%c[H\n", 27, 27, 27)
+
+    if (result != 0 or restored != 0 or editor.line_count != 2 or
+        editor.lines[0] != "bc" or editor.lines[1] != "def" or editor.dirty != 0)
+    {
+        printf("[ed_visual_test] FAIL edit\n")
+        return 1
+    }
+    printf("[ed_visual_test] PASS\n")
+    return 0
+}
+
+fn execute_command(editor: &Editor, command: string): i32
+{
+    if (command == "h" or command == "help") { print_help(); return 0 }
+    if (command == ",p" or command == "%p") { return print_all(editor, 0) }
+    if (command == ",n" or command == "%n") { return print_all(editor, 1) }
+    if (command == "=") { printf("%d\n", editor.line_count); return 0 }
+    if (command == "Q") { editor.running = 0; return 0 }
+    if (command == "q")
+    {
+        if (editor.dirty != 0) { printf("? buffer modified\n"); return -1 }
+        editor.running = 0
+        return 0
+    }
+    if (command == "wq")
+    {
+        if (editor.filename == "") { printf("? no filename\n"); return -1 }
+        if (write_file(editor, editor.filename) == 0) { editor.running = 0; return 0 }
+        return -1
+    }
+    if (command.length > 0 and command[0] == 'w')
+    {
+        let mut path = string_tail(command, 1)
+        if (path == "") { path = editor.filename }
+        if (path == "") { printf("? no filename\n"); return -1 }
+        return write_file(editor, path)
+    }
+    if (command.length > 0 and (command[0] == 'e' or command[0] == 'E'))
+    {
+        let force = if (command[0] == 'E') { 1 } else { 0 }
+        if (editor.dirty != 0 and force == 0)
+        {
+            printf("? buffer modified\n")
+            return -1
+        }
+        let path = string_tail(command, 1)
+        if (path == "") { printf("? no filename\n"); return -1 }
+        return load_file(editor, path)
+    }
+    if (command.length > 0 and command[0] == 'f')
+    {
+        let path = string_tail(command, 1)
+        if (path != "") { editor.filename = path }
+        if (editor.filename == "") { printf("? no filename\n"); return -1 }
+        printf("%s\n", editor.filename)
+        return 0
+    }
+
+    let address = parse_address(editor, command)
+    let mut operation = 0
+    if (address.next < command.length) { operation = command[address.next] }
+    if (command.length == 0)
+    {
+        let next = editor.current + 1
+        return print_line(editor, next, 0)
+    }
+    if (operation == 0 and address.present != 0)
+    {
+        return print_line(editor, address.value, 0)
+    }
+    if (operation == 'p') { return print_line(editor, address.value, 0) }
+    if (operation == 'n') { return print_line(editor, address.value, 1) }
+    if (operation == 'd') { return delete_line(editor, address.value) }
+    if (operation == 'a')
+    {
+        let position = if (editor.line_count == 0) { 0 } else { address.value }
+        if (editor.line_count != 0 and valid_address(editor, address.value) == 0) { return -1 }
+        return input_block(editor, position)
+    }
+    if (operation == 'i')
+    {
+        let position = if (editor.line_count == 0) { 0 } else { address.value - 1 }
+        if (editor.line_count != 0 and valid_address(editor, address.value) == 0) { return -1 }
+        return input_block(editor, position)
+    }
+    printf("? unknown command; use h\n")
+    return -1
+}
+
+fn main(argc: i32, argv: &string, envp: &string): i32
+{
+    let mut lines: [string] = []
+    let mut editor = Editor{
+        lines: lines,
+        line_count: 0,
+        current: 0,
+        filename: "",
+        dirty: 0,
+        running: 1,
+        cursor_column: 0,
+        top_line: 1,
+        left_column: 0,
+        mode: 0,
+        pending: 0,
+        command: "",
+        message: "",
+        screen_rows: 25,
+        screen_columns: 80
+    }
+    if (argc > 2)
+    {
+        printf("usage: ed [FILE]\n")
+        return 2
+    }
+    if (argc == 2 and (argv[1] == "-h" or argv[1] == "--help"))
+    {
+        print_help()
+        return 0
+    }
+    if (argc == 2 and argv[1] == "--visual-smoke")
+    {
+        return visual_smoke(&editor)
+    }
+    if (argc == 2)
+    {
+        if (load_file(&editor, argv[1]) != 0) { return 1 }
+    }
+    if (aukos_vix_isatty(0) != 0)
+    {
+        return visual_loop(&editor)
+    }
+    if (argc != 2) { printf("ed: new buffer; h for help\n") }
+
+    while (editor.running != 0)
+    {
+        let input = read_input_line()
+        if (input.overflow != 0) { printf("? command too long\n") }
+        else { execute_command(&editor, input.text) }
+        if (input.eof != 0) { editor.running = 0 }
+    }
+    return 0
+}

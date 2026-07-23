@@ -1,0 +1,28 @@
+/build/
+
+# Local overrides and editor state.
+/config.local.mk
+/.cache/
+/.idea/
+/.vscode/
+*.swp
+*~
+
+# Nested source trees are vendored as ordinary files. Keep only source and
+# intentional generated bootstrap inputs in the parent repository.
+/toybox/.config*
+/toybox/generated/
+/toybox/toybox
+/toybox/toybox_unstripped
+/toybox/toybox-aukos
+/user/vixc/build/
+/user/vixc/runtime/*.o
+/user/vixc/tests/bin/
+/user/vixc/test
+
+# Top-level build artifacts that may predate build/ consolidation.
+*.o
+*.elf
+*.iso
+*.img
+*.pcap

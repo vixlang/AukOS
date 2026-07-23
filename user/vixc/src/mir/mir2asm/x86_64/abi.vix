@@ -1,0 +1,13 @@
+#[no_main]
+
+pub fn mir2asm_syscall_reg(index: i32): string
+{
+    if (index == 0) { return "rax" }
+    if (index == 1) { return "rdi" }
+    if (index == 2) { return "rsi" }
+    if (index == 3) { return "rdx" }
+    if (index == 4) { return "r10" }
+    if (index == 5) { return "r8" }
+    if (index == 6) { return "r9" }
+    return "rax"
+}

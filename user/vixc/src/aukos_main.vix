@@ -1,0 +1,280 @@
+import "parser.vix"
+import "desugar.vix"
+import "semantic.vix"
+import "error.vix"
+import "compiler_model.vix"
+import "mir/mir.vix"
+import "mir/mir2asm/mod.vix"
+import "version.vix"
+
+extern "C"
+{
+    fn fopen(path: ptr, mode: ptr): ptr
+    fn fclose(file: ptr): i32
+    fn fread(buffer: ptr, size: i64, count: i64, file: ptr): i64
+    fn fseek(file: ptr, offset: i64, whence: i32): i32
+    fn ftell(file: ptr): i64
+    fn malloc(size: usize): string
+    fn fputs(text: string, file: ptr): i32
+    fn vix_print_stderr(text: string)
+    fn vix_elf_write_object(assembly: string, path: string): i32
+    fn vix_elf_link_static(object_path: string, runtime_path: string, output_path: string): i32
+    fn vix_driver_create_temp_object(): string
+    fn vix_driver_discard_temp_object(path: string): i32
+    fn vix_driver_runtime_object(): string
+}
+
+fn core_diag(text: string) { vix_print_stderr(text) }
+
+fn core_read_source(path: string): string
+{
+    let file = fopen(path, "r")
+    if (file == nil) { return "" }
+    if (fseek(file, 0, 2) != 0) { fclose(file); return "" }
+    let size = ftell(file)
+    if (size < 0 or fseek(file, 0, 0) != 0) { fclose(file); return "" }
+    let buffer = malloc(size + 1)
+    if (buffer == nil) { fclose(file); return "" }
+    let count = fread(buffer, 1, size, file)
+    if (count != size) { fclose(file); return "" }
+    buffer[count] = 0
+    if (fclose(file) != 0) { return "" }
+    return buffer
+}
+
+fn core_write_text(path: string, text: string): i32
+{
+    let file = fopen(path, "w")
+    if (file == nil) { return 1 }
+    if (fputs(text, file) < 0) { fclose(file); return 1 }
+    if (fclose(file) != 0) { return 1 }
+    return 0
+}
+
+fn core_default_output(input: string, suffix: string): string
+{
+    let mut end = input.length
+    if (end >= 4 and input[end - 4] == '.' and input[end - 3] == 'v' and
+        input[end - 2] == 'i' and input[end - 1] == 'x')
+    {
+        end -= 4
+    }
+    let mut output = ""
+    for (i in 0 .. end) { output = output + char_string(input[i]) }
+    return output + suffix
+}
+
+fn core_ends_with(text: string, suffix: string): i32
+{
+    if (text.length < suffix.length) { return 0 }
+    let offset = text.length - suffix.length
+    for (i in 0 .. suffix.length)
+    {
+        if (text[offset + i] != suffix[i]) { return 0 }
+    }
+    return 1
+}
+
+fn core_default_executable(input: string): string
+{
+    if (core_ends_with(input, ".vix") == 1) { return core_default_output(input, "") }
+    return input + ".elf"
+}
+
+fn core_default_link_output(input: string): string
+{
+    if (core_ends_with(input, ".o") == 1)
+    {
+        let mut output = ""
+        for (i in 0 .. input.length - 2) { output = output + char_string(input[i]) }
+        return output
+    }
+    return input + ".elf"
+}
+
+fn core_print_help(): i32
+{
+    print("Vix compiler for AukOS " + vixc_version())
+    print("")
+    print("USAGE:")
+    print("  vixc INPUT.vix [-o OUTPUT]")
+    print("  vixc MODE INPUT [-o OUTPUT]")
+    print("")
+    print("By default, compile INPUT.vix and statically link an AukOS executable.")
+    print("")
+    print("MODES:")
+    print("  --lex          Print lexer output")
+    print("  --parser       Print parser output")
+    print("  --check        Parse and type-check only")
+    print("  --debug=mir    Print MIR")
+    print("  -S             Emit assembly")
+    print("  -obj           Emit an ELF relocatable object")
+    print("  --link         Link an existing object with /lib/vix/runtime.o")
+    print("")
+    print("OPTIONS:")
+    print("  -o PATH        Write the selected output to PATH")
+    print("  --target TRIPLE  Use x86_64-aukos-none or x86_64-unknown-none")
+    print("  -h, --help     Display this help")
+    print("  -v, --version  Display the compiler version")
+    print("  --             End option parsing")
+    print("")
+    print("EXAMPLES:")
+    print("  vixc /work/hello.vix -o /work/hello")
+    print("  vixc -obj /work/hello.vix -o /work/hello.o")
+    print("  vixc --link /work/hello.o -o /work/hello")
+    return 0
+}
+
+fn core_select_mode(current: string, requested: string): string
+{
+    if (current == "" or current == requested) { return requested }
+    return "conflict"
+}
+
+fn core_frontend(source: string, filename: string): AstProgram
+{
+    return parse_program(source, filename)
+}
+
+fn main(argc: i32, argv: &string): i32
+{
+    let mut mode = ""
+    let mut input = ""
+    let mut output = ""
+    let mut index = 1
+    let mut parse_options = 1
+
+    while (index < argc)
+    {
+        let arg = argv[index]
+        if (parse_options == 1 and arg == "--")
+        {
+            parse_options = 0
+        }
+        elif (parse_options == 1 and (arg == "-h" or arg == "--help"))
+        {
+            mode = core_select_mode(mode, "--help")
+        }
+        elif (parse_options == 1 and (arg == "-v" or arg == "--version"))
+        {
+            mode = core_select_mode(mode, "--version")
+        }
+        elif (parse_options == 1 and (arg == "--lex" or arg == "--parser" or arg == "--check" or
+            arg == "--debug=mir" or arg == "-S" or arg == "-obj" or
+            arg == "--link"))
+        {
+            mode = core_select_mode(mode, arg)
+        }
+        elif (parse_options == 1 and arg == "--target")
+        {
+            if (index + 1 >= argc) { core_diag("vixc: target argument missing\n"); return 10 }
+            index += 1
+            if (argv[index] != "x86_64-unknown-none" and argv[index] != "x86_64-aukos-none")
+            {
+                core_diag("vixc: unsupported freestanding target\n")
+                return 11
+            }
+        }
+        elif (parse_options == 1 and arg == "-o")
+        {
+            if (index + 1 >= argc) { core_diag("vixc: output argument missing\n"); return 12 }
+            index += 1
+            output = argv[index]
+        }
+        elif (parse_options == 1 and arg.length > 0 and arg[0] == '-')
+        {
+            core_diag("vixc: unsupported option '" + arg + "'\n")
+            return 13
+        }
+        elif (input != "")
+        {
+            core_diag("vixc: multiple input files are not supported\n")
+            return 14
+        }
+        else { input = arg }
+        index += 1
+    }
+
+    if (mode == "conflict") { core_diag("vixc: conflicting emit modes\n"); return 16 }
+    if (mode == "--help") { return core_print_help() }
+    if (mode == "--version") { print(vixc_version_banner()); return 0 }
+    if (input == "") { core_diag("vixc: no input file\n"); return 15 }
+    if (mode == "--link")
+    {
+        let executable_path = if (output == "") { core_default_link_output(input) } else { output }
+        if (vix_elf_link_static(input, vix_driver_runtime_object(), executable_path) != 0)
+        {
+            core_diag("vixc: link stage: static link failed\n")
+            return 70
+        }
+        return 0
+    }
+    let source = core_read_source(input)
+    if (source == "") { core_diag("vixc: cannot read source '" + input + "'\n"); return 20 }
+    let lexer_error = lexer_validate(source)
+    if (lexer_error != "") { core_diag(lexer_error); return 25 }
+
+    if (mode == "--lex") { print(tokenize_debug(source)); return 0 }
+    let program = core_frontend(source, input)
+    if (program.ok == 0) { core_diag(program.error); return 30 }
+    if (mode == "--parser") { print(ast_program_debug(program)); return 0 }
+
+    let semantic = semantic_check_program_with_warnings(program, source, input, 1)
+    if (semantic.error_count > 0 or semantic.type_result.ok == 0)
+    {
+        core_diag(semantic_result_debug(semantic))
+        return 40
+    }
+    if (mode == "--check") { return 0 }
+
+    let mir = mir_program(desugar_program(program))
+    if (mode == "--debug=mir") { print(mir); return 0 }
+    let assembly = mir2asm_debug(mir)
+    if (mode == "-S")
+    {
+        let path = if (output == "") { core_default_output(input, ".s") } else { output }
+        if (core_write_text(path, assembly) != 0)
+        {
+            core_diag("vixc: cannot write assembly output\n")
+            return 50
+        }
+        return 0
+    }
+
+    if (mode == "-obj")
+    {
+        let object_path = if (output == "") { core_default_output(input, ".o") } else { output }
+        if (vix_elf_write_object(assembly, object_path) != 0)
+        {
+            core_diag("vixc: compile stage: object emission failed\n")
+            return 60
+        }
+        return 0
+    }
+
+    let executable_path = if (output == "") { core_default_executable(input) } else { output }
+    let temporary_object = vix_driver_create_temp_object()
+    if (temporary_object == nil)
+    {
+        core_diag("vixc: compile stage: cannot create temporary object\n")
+        return 61
+    }
+    if (vix_elf_write_object(assembly, temporary_object) != 0)
+    {
+        vix_driver_discard_temp_object(temporary_object)
+        core_diag("vixc: compile stage: object emission failed\n")
+        return 60
+    }
+    if (vix_elf_link_static(temporary_object, vix_driver_runtime_object(), executable_path) != 0)
+    {
+        vix_driver_discard_temp_object(temporary_object)
+        core_diag("vixc: link stage: static link failed\n")
+        return 70
+    }
+    if (vix_driver_discard_temp_object(temporary_object) != 0)
+    {
+        core_diag("vixc: cleanup stage: cannot remove temporary object\n")
+        return 71
+    }
+    return 0
+}

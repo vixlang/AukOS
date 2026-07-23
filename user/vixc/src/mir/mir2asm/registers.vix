@@ -1,0 +1,91 @@
+#[no_main]
+import "target.vix"
+
+pub fn mir2asm_acc(ty: string): string
+{
+    if (mir2asm_type_is_64(ty) == 1) { return "rax" }
+    if (ty == "i8" or ty == "u8" or ty == "char") { return "al" }
+    return "eax"
+}
+
+pub fn mir2asm_dx(ty: string): string
+{
+    if (mir2asm_type_is_64(ty) == 1) { return "rdx" }
+    return "edx"
+}
+
+pub fn mir2asm_cx(ty: string): string
+{
+    if (mir2asm_type_is_64(ty) == 1) { return "rcx" }
+    return "ecx"
+}
+
+pub fn mir2asm_arg_reg_typed(index: i32, ty: string): string
+{
+    if (mir2asm_type_is_float(ty) == 1)
+    {
+        return match index {
+            0 -> "xmm0"
+            1 -> "xmm1"
+            2 -> "xmm2"
+            3 -> "xmm3"
+            4 -> "xmm4"
+            5 -> "xmm5"
+            6 -> "xmm6"
+            7 -> "xmm7"
+            _ -> "xmm0"
+        }
+    }
+    if (ty == "i8" or ty == "u8" or ty == "char")
+    {
+        return match index {
+            0 -> "dil"
+            1 -> "sil"
+            2 -> "dl"
+            3 -> "cl"
+            4 -> "r8b"
+            5 -> "r9b"
+            _ -> "al"
+        }
+    }
+    if (mir2asm_type_is_64(ty) == 1)
+    {
+        return match index {
+            0 -> "rdi"
+            1 -> "rsi"
+            2 -> "rdx"
+            3 -> "rcx"
+            4 -> "r8"
+            5 -> "r9"
+            _ -> "rax"
+        }
+    }
+    return match index {
+        0 -> "edi"
+        1 -> "esi"
+        2 -> "edx"
+        3 -> "ecx"
+        4 -> "r8d"
+        5 -> "r9d"
+        _ -> "eax"
+    }
+}
+
+pub fn mir2asm_callee_reg_typed(reg: string, ty: string): string
+{
+    if (ty == "i8" or ty == "u8" or ty == "char")
+    {
+        if (reg == "r12") { return "r12b" }
+        if (reg == "r13") { return "r13b" }
+        if (reg == "r14") { return "r14b" }
+        return "r15b"
+    }
+    if (mir2asm_type_is_64(ty) == 0)
+    {
+        if (reg == "r12") { return "r12d" }
+        if (reg == "r13") { return "r13d" }
+        if (reg == "r14") { return "r14d" }
+        return "r15d"
+    }
+    return reg
+}

@@ -1,0 +1,23 @@
+extern "C"
+{
+    fn strlen(text: string): i32
+}
+
+fn local_sum(limit: i32): i32
+{
+    let mut total = 0
+    for (i in 0 .. limit)
+    {
+        if (i < 4) { total = total + i }
+    }
+    return total
+}
+
+fn main(): i32
+{
+    let text = "writer"
+    let length_ok = strlen(text) == 6
+    let sum_ok = local_sum(6) == 6
+    if (length_ok and sum_ok) { return 0 }
+    return 1
+}

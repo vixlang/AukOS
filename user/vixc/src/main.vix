@@ -1,0 +1,760 @@
+import "parser.vix"
+import "json_ast.vix"
+import "desugar.vix"
+import "codegen.vix"
+import "error.vix"
+import "backend/llc.vix"
+import "backend/linker.vix"
+import "backend/passes.vix"
+import "compiler_model.vix"
+import "mir/mir.vix"
+import "mir/opt.vix"
+import "mir/lir2asm/mod.vix"
+import "version.vix"
+
+extern "C"
+{
+    fn fputs(s: string, file: ptr): i32
+    fn system(command: ptr): i32
+    fn remove(filename: ptr): i32
+    fn vix_print_stderr(s: string)
+    fn malloc(size: usize): string
+    fn LLVMGetDefaultTargetTriple(): string
+    fn vix_diag_red(): string
+    fn vix_diag_yellow(): string
+    fn vix_diag_reset(): string
+    fn vix_compiler_runtime_object_path(argv0: string): string
+    fn vix_api_source_has_no_std(src: string): i32
+}
+
+fn string_ends_with(text: string, suffix: string): i32
+{
+    if (text.length < suffix.length) { return 0 }
+    let offset = text.length - suffix.length
+    for (i in 0 .. suffix.length)
+    {
+        if (text[offset + i] != suffix[i]) { return 0 }
+    }
+    return 1
+}
+
+type CompilerModeResult = CompilerModeName(string) | CompilerModeUnknown
+
+fn compiler_mode(arg: string): CompilerModeResult
+{
+    if (arg == "-h" or arg == "--help") { return CompilerModeName("--help") }
+    if (arg == "-v" or arg == "--version") { return CompilerModeName("--version") }
+    if (arg == "--lex" or arg == "--parse-stats" or arg == "--parser" or arg == "--ast" or arg == "-ast" or arg == "--ast-json" or arg == "--typeinfer" or arg == "--tyinfer" or arg == "--semantic" or arg == "--check" or arg == "-ll" or arg == "-obj" or arg == "-S") { return CompilerModeName(arg) }
+    return CompilerModeUnknown
+}
+
+fn strip_vix_ext(name: string): string
+{
+    if (string_ends_with(name, ".vix") == 1)
+    {
+        let mut out = ""
+        let end = name.length - 4
+        for (i in 0 .. end)
+        {
+            out = out + char_string(name[i])
+        }
+        return out
+    }
+    return name
+}
+
+fn find_last_char(text: string, needle: i8): i32
+{
+    let mut found = -1
+    for (i in 0 .. text.length)
+    {
+        if (text[i] == needle) { found = i }
+    }
+    return found
+}
+
+fn slice_string(text: string, start: i32, end: i32): string
+{
+    let mut out = ""
+    for (i in start .. end)
+    {
+        out = out + char_string(text[i])
+    }
+    return out
+}
+
+fn dirname(path: string): string
+{
+    let slash = find_last_char(path, '/')
+    if (slash < 0) { return "." }
+    if (slash == 0) { return "/" }
+    return slice_string(path, 0, slash)
+}
+
+fn runtime_object_path(compiler_path: string): string
+{
+    return vix_compiler_runtime_object_path(compiler_path)
+}
+
+fn shell_command(command: string): i32
+{
+    return system(command)
+}
+
+fn delete_file(path: string): i32
+{
+    return remove(path)
+}
+
+fn diag_print(text: string)
+{
+    vix_print_stderr(text)
+}
+
+fn info_print(text: string)
+{
+    print(text)
+}
+
+fn ir_output_path(filename: string, output: string): string
+{
+    if (output != "") { return output }
+    return strip_vix_ext(filename) + ".ll"
+}
+
+fn artifact_output_path(filename: string, output: string, emit: string): string
+{
+    if (output != "") { return output }
+    let base = strip_vix_ext(filename)
+    if (emit == "exe") { return base }
+    if (emit == "asm") { return base + ".s" }
+    return base + ".o"
+}
+
+fn opt_level_arg(arg: string): i32
+{
+    if (arg == "-opt=l0") { return 0 }
+    if (arg == "-opt=l1") { return 1 }
+    if (arg == "-opt=l2") { return 2 }
+    if (arg == "-opt=l3") { return 3 }
+    return -1
+}
+
+fn print_help(): i32
+{
+    print("OVERVIEW: Vix Compiler LLVM Bootstrap v0.4.6")
+    print("")
+    print("USAGE: vixc [options] <input.vix>")
+    print("")
+    print("OPTIONS:")
+    print("  -o <file>              Write output to <file>")
+    print("  -ll [file]             Emit LLVM IR to <file> (default: <input>.ll)")
+    print("  -S                     Emit assembly to <file> (default: <input>.s)")
+    print("  -obj                   Emit object file (default: <input>.o)")
+    print("  -opt=lN                Optimize LLVM IR with level N (0..3; default: l0)")
+    print("  --target <triple>      Generate code for target triple (LLVM; self supports x86_64 only)")
+    print("  --backend <llvm|self|self-opt|self-lir>  Select codegen backend (default: llvm)")
+    print("  -l<lib>, -l <lib>      Link executable with a system library")
+    print("  -L<dir>, -L <dir>      Add a system library search path")
+    print("  --check                Syntax & type check only")
+    print("  --lex                  Print tokens to stdout")
+    print("  --parse-stats          Print lightweight parser input statistics")
+    print("  --parser               Print parse tree to stdout")
+    print("  --ast / -ast                 Print AST to stdout")
+    print("  --ast-json                   Print JSON AST to stdout")
+    print("  --typeinfer            Print type inference result to stdout")
+    print("  --semantic             Print semantic analysis to stdout")
+    print("  --debug=<mir|lir|asm|llvm> Print selected intermediate output to stdout")
+    print("  --explan=ERRORCODE     Explain a compiler error code, for example E3001")
+    print("  -v, --version          Display compiler version information")
+    print("  -h, --help             Display this help message")
+    return 0
+}
+
+fn print_version(): i32
+{
+    print(vixc_version_banner() + " (bootstrap)")
+    return 0
+}
+
+fn print_error_explanation(code: string): i32
+{
+    let explanation = error_explanation(code)
+    if (explanation == "")
+    {
+        diag_print("vixc: error: unknown error code '" + code + "'")
+        return 1
+    }
+    print(explanation)
+    return 0
+}
+
+fn source_file_arg(arg: string): ?string
+{
+    return match string_ends_with(arg, ".vix") {
+        1 -> Some(arg)
+        _ -> None
+    }
+}
+
+fn mode_success(): ?i32 { return Some(0) }
+fn mode_failure(): ?i32 { return Some(1) }
+fn mode_continue(): ?i32 { return None }
+
+fn host_target_triple(): string
+{
+    let triple = LLVMGetDefaultTargetTriple()
+    if (triple == nil or triple == "") { return "" }
+    return triple
+}
+
+fn self_backend_target_supported(target_triple: string): i32
+{
+    if (target_triple == "") { return 1 }
+    if (str_starts_with(target_triple, "x86_64") == 1) { return 1 }
+    return 0
+}
+
+fn run_mode(mode: string, src: string, filename: string, emit: string, output: string, runtime_object: string, link_args: string, target_triple: string, backend: string, optimize_mir: i32, opt_level: i32): ?i32
+{
+    let no_std = vix_api_source_has_no_std(src)
+    let lexer_error = lexer_validate(src)
+    if (lexer_error != "")
+    {
+        info_error(lexer_error)
+        return mode_failure()
+    }
+
+    match mode
+    {
+        "--lex" -> {
+            info_print(tokenize_debug(src))
+            return mode_success()
+        }
+        "--parse-stats" -> {
+            info_print(parse_program_stats(src, filename))
+            return mode_success()
+        }
+        _ -> {}
+    }
+
+    let program = parse_program(src, filename)
+
+    match mode
+    {
+        "--parser" -> {
+            if (program.ok == 0)
+            {
+                info_print(program.error)
+            }
+            else
+            {
+                info_print(ast_program_debug(program))
+            }
+            return mode_success()
+        }
+        "--ast" | "-ast" -> {
+            if (program.ok == 0)
+            {
+                info_print(program.error)
+            }
+            else
+            {
+                info_print(ast(program))
+            }
+            return mode_success()
+        }
+        "--ast-json" -> {
+            info_print(json_ast(program))
+            return mode_success()
+        }
+        _ -> {}
+    }
+    
+    if (program.ok == 0)
+    {
+        diag_print(program.error)
+        return mode_failure()
+    }
+
+    let emit_semantic_warnings = if (mode == "codegen") { 0 } else { 1 }
+    let semantic_result = semantic_check_program_with_warnings(program, src, filename, emit_semantic_warnings)
+    match mode
+    {
+        "--semantic" -> {
+            info_print(semantic_result_debug(semantic_result))
+            return mode_success()
+        }
+        _ -> {}
+    }
+
+    if (semantic_result.error_count > 0)
+    {
+        match mode
+        {
+            "--typeinfer" | "--tyinfer" -> {
+                info_print(semantic_result_debug(semantic_result))
+                if (semantic_result.error_count == semantic_result.type_error_count)
+                {
+                    return mode_success()
+                }
+                return mode_failure()
+            }
+            _ -> {}
+        }
+        diag_print(semantic_result_debug(semantic_result))
+        return mode_failure()
+    }
+    if (semantic_result.warning_count > 0)
+    {
+        diag_print(semantic_result_debug(semantic_result))
+    }
+
+    let infer_result = semantic_result.type_result
+    match mode
+    {
+        "--typeinfer" | "--tyinfer" -> {
+            info_print(typeck_result_debug(infer_result, src, filename))
+            return mode_success()
+        }
+        _ -> {}
+    }
+
+    if (infer_result.ok == 0)
+    {
+        diag_print(typeck_result_debug(infer_result, src, filename))
+        return mode_failure()
+    }
+
+    let lowered_program = desugar_program(program)
+
+    if (mode == "debug_llvm")
+    {
+        let ir = codegen_program_target(lowered_program, target_triple)
+        info_print(ir)
+        return mode_success()
+    }
+
+    match mode
+    {
+        "debug_mir" -> {
+            let mir = mir_program(lowered_program)
+            info_print(if (optimize_mir == 1) { mir_opt_program(mir) } else { mir })
+            return mode_success()
+        }
+        "debug_lir" -> {
+            let raw_mir = mir_program(lowered_program)
+            let mir = if (optimize_mir == 1) { mir_opt_program(raw_mir) } else { raw_mir }
+            info_print(lir2asm_debug_lir(mir))
+            return mode_success()
+        }
+        "debug_asm" -> {
+            let raw_mir = mir_program(lowered_program)
+            let mir = if (optimize_mir == 1) { mir_opt_program(raw_mir) } else { raw_mir }
+            let asm = if (backend == "self-lir") { lir2asm_debug(mir) } else { mir2asm_debug(mir) }
+            info_print(asm)
+            return mode_success()
+        }
+        _ -> {}
+    }
+
+    match mode
+    {
+        "--check" -> { return mode_success() }
+        _ -> {}
+    }
+
+    if ((backend == "self" or backend == "self-lir") and emit != "ir" and emit != "stdout")
+    {
+        let raw_mir = mir_program(lowered_program)
+        let mir = if (optimize_mir == 1) { mir_opt_program(raw_mir) } else { raw_mir }
+        let artifact_path = artifact_output_path(filename, output, emit)
+        if (emit == "asm")
+        {
+            let write_result = if (backend == "self-lir") { lir2asm_write_file(mir, artifact_path) } else { mir2asm_write_file(mir, artifact_path) }
+            if (write_result != 0)
+            {
+                diag_print("vixc: error: cannot write file '" + artifact_path + "'")
+                return mode_failure()
+            }
+            print(artifact_path)
+            return mode_success()
+        }
+        let asm_path = artifact_path + ".tmp.asm"
+        let obj_path = if (emit == "-obj") { artifact_path } else { artifact_path + ".tmp.o" }
+        let write_result2 = if (backend == "self-lir") { lir2asm_write_file(mir, asm_path) } else { mir2asm_write_file(mir, asm_path) }
+        if (write_result2 != 0)
+        {
+            diag_print("vixc: error: cannot write file '" + asm_path + "'")
+            return mode_failure()
+        }
+        let asm_result = shell_command("nasm -f elf64 " + asm_path + " -o " + obj_path)
+        delete_file(asm_path)
+        if (asm_result != 0)
+        {
+            diag_print("vixc: error: failed to assemble '" + obj_path + "'")
+            return mode_failure()
+        }
+        if (emit == "-obj")
+        {
+            print(obj_path)
+            return mode_success()
+        }
+        let link_result = if (no_std == 1) { linker_link_executable_nostd(obj_path, artifact_path, link_args) } else { linker_link_executable_std(obj_path, runtime_object, artifact_path, link_args) }
+        delete_file(obj_path)
+        if (link_result != 0)
+        {
+            let link_err = linker_last_error()
+            if (link_err != "") { diag_print(link_err) }
+            diag_print("vixc: error: failed to link '" + artifact_path + "'")
+            return mode_failure()
+        }
+        print(artifact_path)
+        return mode_success()
+    }
+
+    let ir = codegen_program_target(lowered_program, target_triple)
+    if (emit == "stdout")
+    {
+        print(ir)
+        return mode_continue()
+    }
+    let mut artifact_path = ""
+    let mut raw_ir_path = ""
+    let mut ir_path = ""
+    if (emit == "ir")
+    {
+        ir_path = ir_output_path(filename, output)
+        raw_ir_path = ir_path + ".tmp.raw.ll"
+    }
+    else
+    {
+        artifact_path = artifact_output_path(filename, output, emit)
+        raw_ir_path = artifact_path + ".tmp.raw.ll"
+        ir_path = artifact_path + ".tmp.ll"
+    }
+    if (write_text_file(raw_ir_path, ir) != 0) { return mode_failure() }
+    let pass_result = passes_optimize_ir(raw_ir_path, ir_path, target_triple, opt_level)
+    delete_file(raw_ir_path)
+    if (pass_result != 0)
+    {
+        let pass_err = passes_last_error()
+        if (pass_err != "") { diag_print(pass_err) }
+        diag_print("vixc: error: failed to optimize LLVM IR '" + ir_path + "'")
+        return mode_failure()
+    }
+    if (emit == "ir")
+    {
+        print(ir_path)
+        return mode_success()
+    }
+
+    if (artifact_path == "")
+    {
+        artifact_path = artifact_output_path(filename, output, emit)
+    }
+    let mut build_result = 0
+    if (emit == "asm")
+    {
+        build_result = llc_compile_asm(ir_path, artifact_path, target_triple)
+    }
+    elif (emit == "-obj")
+    {
+        build_result = llc_compile_object(ir_path, artifact_path, target_triple)
+    }
+    else
+    {
+        let obj_path = artifact_path + ".tmp.o"
+        build_result = llc_compile_object(ir_path, obj_path, target_triple)
+        if (build_result == 0)
+        {
+            build_result = if (no_std == 1) { linker_link_executable_nostd(obj_path, artifact_path, link_args) } else { linker_link_executable_std(obj_path, runtime_object, artifact_path, link_args) }
+        }
+        delete_file(obj_path)
+    }
+    if (emit != "ir")
+    {
+        delete_file(ir_path)
+    }
+    if (build_result != 0)
+    {
+        let llc_err = llc_last_error()
+        let link_err = linker_last_error()
+        let pass_err = passes_last_error()
+        if (pass_err != "") { diag_print(pass_err) }
+        if (llc_err != "") { diag_print(llc_err) }
+        if (link_err != "") { diag_print(link_err) }
+        diag_print("vixc: error: failed to build '" + artifact_path + "'")
+        return mode_failure()
+    }
+    print(artifact_path)
+    return mode_success()
+}
+
+fn write_text_file(path: string, content: string): i32
+{
+    let file = fopen(path, "w")
+    if (file == 0)
+    {
+        diag_print("vixc: error: cannot write file '" + path + "'")
+        return 1
+    }
+    fputs(content, file)
+    fclose(file)
+    return 0
+}
+
+fn read_source_file(path: ptr): string
+{
+    let file = fopen(path, "r")
+    if (file == 0)
+    {
+        return ""
+    }
+    fseek(file, 0, 2)
+    let size = ftell(file)
+    fseek(file, 0, 0)
+    let buf = malloc(size + 1)
+    let n = fread(buf, 1, size, file)
+    buf[n] = 0
+    fclose(file)
+    return buf
+}
+
+fn main(argc: i32, argv: &string): i32
+{
+    let mut src = ""
+    let mut mode = "codegen"
+    let mut filename = ""
+    let mut want_help = 0
+    let mut want_version = 0
+    let mut explain_code = ""
+    let mut emit = "exe"
+    let mut output = ""
+    let mut has_input = 0
+    let mut link_args = ""
+    let mut target_triple = host_target_triple()
+    let mut backend = "llvm"
+    let mut optimize_mir = 0
+    let mut opt_level = 0
+
+    let mut i = 1
+    while (i < argc)
+    {
+        let arg = argv[i]
+        if (arg == "-h" or arg == "--help")
+        {
+            want_help = 1
+        }
+        elif (arg == "-v" or arg == "--version")
+        {
+            want_version = 1
+        }
+        elif (str_starts_with(arg, "--explan=") == 1)
+        {
+            explain_code = slice_string(arg, 9, arg.length)
+            if (explain_code == "")
+            {
+                diag_print("vixc: error: '--explan=' requires an error code")
+                return 1
+            }
+        }
+        elif (arg == "-o")
+        {
+            if (i + 1 < argc)
+            {
+                i += 1
+                output = argv[i]
+            }
+            else
+            {
+                diag_print("vixc: error: '-o' requires an argument")
+                return 1
+            }
+        }
+        elif (arg == "-ll")
+        {
+            emit = "ir"
+            if (i + 1 < argc)
+            {
+                let next = argv[i + 1]
+                if (string_ends_with(next, ".vix") == 0 and string_ends_with(next, ".ll") == 1)
+                {
+                    output = next
+                    i += 1
+                }
+            }
+        }
+        elif (arg == "-obj")
+        {
+            emit = "-obj"
+        }
+        elif (str_starts_with(arg, "-opt=") == 1)
+        {
+            opt_level = opt_level_arg(arg)
+            if (opt_level < 0)
+            {
+                diag_print("vixc: error: expected '-opt=lN' where N is 0, 1, 2, or 3")
+                return 1
+            }
+        }
+        elif (arg == "-S")
+        {
+            emit = "asm"
+        }
+        elif (str_starts_with(arg, "--debug=") == 1)
+        {
+            let debug_mode = slice_string(arg, 8, arg.length)
+            if (debug_mode == "mir") { mode = "debug_mir" }
+            elif (debug_mode == "lir") { mode = "debug_lir" }
+            elif (debug_mode == "asm") { mode = "debug_asm" }
+            elif (debug_mode == "llvm") { mode = "debug_llvm" }
+            else
+            {
+                diag_print("vixc: error: unknown debug output '" + debug_mode + "'")
+                return 1
+            }
+        }
+        elif (arg == "--target")
+        {
+            if (i + 1 < argc)
+            {
+                i += 1
+                target_triple = argv[i]
+            }
+            else
+            {
+                diag_print("vixc: error: '--target' requires an argument")
+                return 1
+            }
+        }
+        elif (arg == "--backend")
+        {
+            if (i + 1 < argc)
+            {
+                i += 1
+                backend = argv[i]
+                if (backend == "self-opt")
+                {
+                    backend = "self"
+                    optimize_mir = 1
+                }
+                elif (backend == "llvm")
+                {
+                    optimize_mir = 0
+                }
+            }
+            else
+            {
+                diag_print("vixc: error: '--backend' requires an argument")
+                return 1
+            }
+        }
+        elif (arg == "--backend=self")
+        {
+            backend = "self"
+        }
+        elif (arg == "--backend=self-opt")
+        {
+            backend = "self"
+            optimize_mir = 1
+        }
+        elif (arg == "--backend=self-lir")
+        {
+            backend = "self-lir"
+        }
+        elif (arg == "--backend=llvm")
+        {
+            backend = "llvm"
+            optimize_mir = 0
+        }
+        elif (arg == "-l" or arg == "-L")
+        {
+            if (i + 1 < argc)
+            {
+                i += 1
+                link_args = link_args + " " + arg + argv[i]
+            }
+            else
+            {
+                diag_print("vixc: error: '" + arg + "' requires an argument")
+                return 1
+            }
+        }
+        elif (str_starts_with(arg, "-l") == 1 or str_starts_with(arg, "-L") == 1)
+        {
+            link_args = link_args + " " + arg
+        }
+        elif (string_ends_with(arg, ".o") == 1)
+        {
+            link_args = link_args + " " + arg
+        }
+        else
+        {
+            match compiler_mode(arg)
+            {
+                CompilerModeName(next_mode) -> {
+                    if (next_mode == "--help") { want_help = 1 }
+                    elif (next_mode == "--version") { want_version = 1 }
+                    elif (next_mode == "-ll") { emit = "ir" }
+                    elif (next_mode == "-obj") { emit = "-obj" }
+                    elif (next_mode == "-S") { emit = "asm" }
+                    else { mode = next_mode }
+                }
+                CompilerModeUnknown -> match source_file_arg(arg)
+                {
+                    Some(path) -> {
+                        if (has_input == 1)
+                        {
+                            diag_print("vixc: error: multiple input files not supported")
+                            return 1
+                        }
+                        src = read_source_file(path)
+                        filename = path
+                        has_input = 1
+                    }
+                    None -> {
+                        diag_print("vixc: error: unrecognized command-line option '" + arg + "'\n")
+                        return 1
+                    }
+                }
+            }
+        }
+        i += 1
+    }
+
+    if (want_help == 1) { return print_help() }
+    if (want_version == 1) { return print_version() }
+    if (explain_code != "") { return print_error_explanation(explain_code) }
+
+    if (has_input == 0)
+    {
+        diag_print("vixc: fatal error: no input files\n")
+        diag_print("compilation terminated.\n")
+        return 1
+    }
+
+    if (src == "")
+    {
+        diag_print("vixc: error: cannot read file '" + filename + "'")
+        return 1
+    }
+
+    if (backend != "llvm" and backend != "self" and backend != "self-lir")
+    {
+        diag_print("vixc: error: unknown backend '" + backend + "'")
+        return 1
+    }
+
+    if ((backend == "self" or backend == "self-lir") and self_backend_target_supported(target_triple) == 0)
+    {
+        diag_print("vixc: error: self backend only supports x86_64 targets, got '" + target_triple + "'")
+        return 1
+    }
+
+    match run_mode(mode, src, filename, emit, output, runtime_object_path(argv[0]), link_args, target_triple, backend, optimize_mir, opt_level)
+    {
+        Some(code) -> return code
+        None -> return 0
+    }
+}
