@@ -6,6 +6,11 @@
 #include <sys/types.h>
 
 #define EOF (-1)
+#define SEEK_SET 0
+#define SEEK_CUR 1
+#define SEEK_END 2
+#define BUFSIZ 4096
+#define FILENAME_MAX 4096
 
 typedef struct FILE FILE;
 extern FILE *stdin;
@@ -32,12 +37,16 @@ int fclose(FILE *stream);
 int putc(int c, FILE *stream);
 #define putc(c, stream) fputc(c, stream)
 int getc(FILE *stream);
+int fgetc(FILE *stream);
 int ungetc(int c, FILE *stream);
 int getchar(void);
+char *fgets(char *s, int size, FILE *stream);
 
 size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
 int fseek(FILE *stream, long offset, int whence);
 long ftell(FILE *stream);
+int fseeko(FILE *stream, off_t offset, int whence);
+off_t ftello(FILE *stream);
 void rewind(FILE *stream);
 int feof(FILE *stream);
 void clearerr(FILE *stream);

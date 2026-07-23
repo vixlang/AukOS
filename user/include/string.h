@@ -18,6 +18,7 @@ int strncmp(const char *s1, const char *s2, size_t n);
 char *strchr(const char *s, int c);
 char *strrchr(const char *s, int c);
 char *strstr(const char *haystack, const char *needle);
+char *strpbrk(const char *s, const char *accept);
 char *strdup(const char *s);
 char *strndup(const char *s, size_t n);
 char *strerror(int errnum);

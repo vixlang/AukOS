@@ -45,6 +45,20 @@ separate writable ext4 mount backed by `virtio1`.
 - libc `mkstemp` requires six trailing `X` bytes, uses mode 0600 with
   `O_CREAT | O_EXCL | O_RDWR`, retries at most 64 collisions, and restores the
   six `X` bytes if all attempts fail.
+- libc `access` validates its mode, uses `stat`, and checks the file mode bits;
+  `F_OK` tests existence and unsupported mode bits fail with `EINVAL`.
+- stdio accepts the ISO C text-mode suffix used by NASM (`rt` and `wt`), and
+  provides bounded `fgets`, `fgetc`, `fseeko`, `ftello`, and `perror`
+  behavior. The time compatibility layer provides UTC `gmtime`,
+  `localtime_r`, and bounded `strftime` formatting for NASM diagnostics.
+
+The AukOS NASM port never opens its requested output with truncation first.
+It creates a unique temporary in the output directory, writes and flushes the
+complete object, calls `fsync`, closes it, and commits it with same-mount
+`rename`. Syntax, write, close, sync, or rename failure removes the temporary
+and leaves an existing destination unchanged. This protocol gives atomic
+replacement during normal operation; without JBD2 it does not claim
+crash-atomic directory metadata after sudden power loss.
 
 The calls use Linux x86_64 syscall numbers 74 (`fsync`), 76 (`truncate`), 77
 (`ftruncate`), and 82 (`rename`). Path calls use the process cwd normalizer.
@@ -100,6 +114,9 @@ editor, ToyBox, process, and network regressions.
 deferred reclaim, access flags, append/hole/truncate, rename replacement, 128
 namespace cycles, 256 KiB page grow/shrink/reuse, and page-allocation rollback.
 `mkstemp_test` injects collisions, retry exhaustion, and invalid templates.
+The libc host suite also covers `access`, NASM's text-mode stdio and seek/tell
+paths, time formatting bounds, `strpbrk` boundaries, and the constrained
+`abort` status.
 `elf_reader_test` loads the same ELF through memory and page-backed tmpfs
 readers and rejects an injected short/error reader. BIOS and UEFI smoke require
 the two generated-file markers plus every earlier process, pipe, shell, ext4,

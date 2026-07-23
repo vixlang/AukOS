@@ -557,6 +557,9 @@ void _start(uint64_t argc, char **argv, char **envp) {
     applets_ok &= run_program("/bin/file_api_test", "file_api_test") == 0;
     write_str("/bin/persistence_test\n");
     applets_ok &= run_program("/bin/persistence_test", "persistence_test") == 0;
+    write_prompt();
+    write_str("/bin/nasm_test\n");
+    applets_ok &= run_program("/bin/nasm_test", "nasm_test") == 0;
     applets_ok &= run_startup_command("/bin/vix_hello --vix-smoke") == 0;
     write_prompt();
     write_str("/bin/vix_runtime_test\n");

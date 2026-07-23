@@ -197,7 +197,7 @@ Unix 工具组合能力：
 - [x] host Vixc 交叉构建最小 `/bin/vix_hello`，验证 Vix/C/syscall/argv/envp 双固件 ABI
 - [x] Vixc stage 1：在 host 交叉构建静态 AukOS 版本并运行自身 lexer/parser/codegen tests
 - [x] Vixc stage 2：在 AukOS 内把示例源码编译为 object/ELF，并执行生成程序
-- [ ] 移植 NASM：在 AukOS 内将 `hello.asm` 汇编为 ELF64 relocatable object
+- [x] 移植 NASM：在 AukOS 内将 `hello.asm` 汇编为 ELF64 relocatable object
 - [x] 提供严格受限的原生 linker，完成 ET_REL -> static ET_EXEC（LLD 仍未移植）
 - [ ] 移植 `ar` 与最小 `make`，支持静态库和多文件项目
 - [ ] 为 LLVM 补齐需要的 C++ runtime、TLS、atomics、pthread/futex、文件映射和大地址空间
@@ -207,7 +207,7 @@ Unix 工具组合能力：
 交付标准：
 
 - [x] `/bin/vixc` 能在 AukOS 内生成并运行一个程序
-- [ ] `/bin/nasm` + linker 能在 AukOS 内生成并运行汇编程序
+- [x] `/bin/nasm` + linker 能在 AukOS 内生成并运行汇编程序
 - [ ] `/bin/clang` 能在 AukOS 内完成 C source -> executable -> run 闭环
 
 ## Phase 5 — 图形与输入（图形应用与 MC 的硬门槛）（P0→P1）

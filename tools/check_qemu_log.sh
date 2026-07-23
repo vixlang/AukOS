@@ -102,9 +102,11 @@ require_line "[file_api_test] PASS"
 if [ "$phase" = first ]; then
     require_line "[persistent_work_first_boot] PASS"
     require_line "[persistent_vix_exec_first_boot] PASS"
+    require_line "[nasm_native_first_boot] PASS"
 elif [ "$phase" = second ]; then
     require_line "[persistent_work_second_boot] PASS"
     require_line "[persistent_vix_exec_second_boot] PASS"
+    require_line "[nasm_native_second_boot] PASS"
 else
     echo "unknown persistence phase: $phase" >&2
     exit 2
@@ -118,6 +120,11 @@ require_line "[vixc_direct_driver_test] PASS"
 require_line "[vixc_cli_test] PASS"
 require_line "[vixc_temp_cleanup_test] PASS"
 require_line "[vixc_output_preservation_test] PASS"
+require_line "[nasm_generated_exec_test] PASS"
+require_line "[nasm_cli_test] PASS"
+require_line "[nasm_output_preservation_test] PASS"
+require_line "[nasm_temp_cleanup_test] PASS"
+require_line "[nasm_reuse_test] PASS 8/8"
 require_line "[touch_test] PASS"
 require_line "[ls_color_test] PASS"
 require_line "[ed_visual_test] PASS"
@@ -192,6 +199,7 @@ for forbidden in "[ERROR]" "execve failed" "waitpid failed" "fork failed" \
 		"[vix_hello] FAIL" \
 		"[vix_runtime_test] FAIL" \
 		"[vixc_test] FAIL" \
+		"[nasm_test] FAIL" "[persistent_work] FAIL" \
 		"[touch_test] FAIL" "[ls_color_test] FAIL" "[ed_visual_test] FAIL" \
 		"[ed_visual_driver_test] FAIL" "[ed_test] FAIL" \
 		"[shell_test] pipeline FAIL" "[shell_test] redirection FAIL" \
@@ -213,6 +221,12 @@ fi
 direct_count=$(grep -Fc "[vixc_direct_driver_test] PASS" "$log_file")
 if [ "$direct_count" -lt 16 ]; then
     echo "QEMU smoke log has only $direct_count direct driver exec passes" >&2
+    exit 1
+fi
+
+nasm_exec_count=$(grep -Fc "[nasm_generated_exec_test] PASS" "$log_file")
+if [ "$nasm_exec_count" -lt 2 ]; then
+    echo "QEMU smoke log has only $nasm_exec_count NASM-generated exec passes" >&2
     exit 1
 fi
 

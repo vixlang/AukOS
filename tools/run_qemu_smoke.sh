@@ -26,6 +26,8 @@ echo_port=45454
 echo_log=${second_log%.log}-udp-echo.log
 lock_file=${second_log%/*}/udp-smoke.lock
 fixture_copy=${second_log%.log}-fixture.img
+guest_object=${final_work%.img}-nasm-hello.o
+guest_executable=${final_work%.img}-nasm-hello
 echo_pid=
 qemu_pid=
 
@@ -50,7 +52,7 @@ cleanup()
 
 trap cleanup EXIT INT TERM
 rm -f "$first_log" "$second_log" "$pcap" "$first_pcap" "$echo_log" \
-      "$fixture_copy" "$final_work"
+      "$fixture_copy" "$final_work" "$guest_object" "$guest_executable"
 cp "$fixture" "$fixture_copy"
 cp "$work_base" "$final_work"
 if ! command -v "$debugfs" >/dev/null 2>&1; then
@@ -129,6 +131,7 @@ wait_for_boot()
     marker=$2
     required_echoes=$3
     completed=0
+    guest_failed=0
     attempt=0
     while kill -0 "$qemu_pid" 2>/dev/null; do
         generated_count=$(grep -Fc "[vixc_generated_exec_test] PASS" "$serial_log" 2>/dev/null || true)
@@ -142,8 +145,16 @@ wait_for_boot()
             kill "$qemu_pid" 2>/dev/null || true
             break
         fi
+        if grep -F "[ERROR]" "$serial_log" >/dev/null 2>&1 ||
+           grep -F "[nasm_test] FAIL" "$serial_log" >/dev/null 2>&1 ||
+           grep -F "[persistent_work] FAIL" "$serial_log" >/dev/null 2>&1 ||
+           grep -F "[toybox_test] default command dispatch FAIL" "$serial_log" >/dev/null 2>&1; then
+            guest_failed=1
+            kill "$qemu_pid" 2>/dev/null || true
+            break
+        fi
         attempt=$((attempt + 1))
-        if [ "$attempt" -ge 9000 ]; then
+        if [ "$attempt" -ge 18000 ]; then
             kill "$qemu_pid" 2>/dev/null || true
             break
         fi
@@ -154,6 +165,10 @@ wait_for_boot()
     result=$?
     set -e
     qemu_pid=
+    if [ "$guest_failed" -eq 1 ]; then
+        echo "QEMU smoke guest reported failure: $serial_log" >&2
+        exit 1
+    fi
     if [ "$completed" -ne 1 ]; then
         if [ "$result" -ne 0 ]; then
             echo "QEMU smoke exited before completion (status $result): $serial_log" >&2
@@ -171,5 +186,9 @@ sh tools/check_qemu_log.sh "$first_log" first
 start_qemu "$second_log" "$pcap"
 wait_for_boot "$second_log" "[persistent_work_second_boot] PASS" 2
 sh tools/check_qemu_log.sh "$second_log" second
+
+"$debugfs" -R "dump /nasm-test/hello.o $guest_object" "$final_work" >/dev/null 2>&1
+"$debugfs" -R "dump /nasm-test/hello $guest_executable" "$final_work" >/dev/null 2>&1
+sh tools/check_nasm_guest_artifacts.sh "$guest_object" "$guest_executable"
 
 "$e2fsck" -fn "$final_work"

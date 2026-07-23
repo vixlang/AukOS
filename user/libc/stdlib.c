@@ -98,3 +98,8 @@ void exit(int code)
 {
     _exit(code);
 }
+
+void abort(void)
+{
+    _exit(134);
+}

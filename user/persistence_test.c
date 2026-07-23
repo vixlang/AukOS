@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 #define PERSIST_DIR "/work/persist"
+#define NASM_PERSIST_DIR "/work/nasm-persist"
 #define DATA_SIZE 9000u
 
 static const char hello_source[] =
@@ -31,6 +32,22 @@ static const char hello_source[] =
     "    }\n"
     "    return 3\n"
     "}\n";
+
+static const char nasm_source[] =
+    "default rel\n"
+    "global main\n"
+    "extern aukos_vix_write_str\n"
+    "section .rodata\n"
+    "message: db \"[nasm_generated_exec_test] PASS\", 10, 0\n"
+    "section .text\n"
+    "main:\n"
+    "    push rbp\n"
+    "    mov rbp, rsp\n"
+    "    lea rdi, [rel message]\n"
+    "    call aukos_vix_write_str wrt ..plt\n"
+    "    xor eax, eax\n"
+    "    pop rbp\n"
+    "    ret\n";
 
 static int fail(const char *step)
 {
@@ -119,6 +136,63 @@ static int execute_generated(const char *phase)
     return run(PERSIST_DIR "/hello", arguments, 1);
 }
 
+static int sync_path(const char *path)
+{
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) return -1;
+    return fsync(fd) == 0 && close(fd) == 0 ? 0 : -1;
+}
+
+static int execute_nasm_generated(const char *path)
+{
+    char *arguments[] = {"hello", 0};
+    return run((char *)path, arguments, 1);
+}
+
+static int nasm_first_boot(void)
+{
+    struct stat status;
+    char *assemble[] = {"nasm", "-f", "elf64",
+                        NASM_PERSIST_DIR "/hello.asm", "-o",
+                        NASM_PERSIST_DIR "/hello.o", 0};
+    char *link[] = {"vixc", "--link", NASM_PERSIST_DIR "/hello.o", "-o",
+                    NASM_PERSIST_DIR "/hello", 0};
+
+    if (mkdir(NASM_PERSIST_DIR, 0755) != 0 &&
+        (stat(NASM_PERSIST_DIR, &status) != 0 ||
+         (status.st_mode & S_IFMT) != S_IFDIR)) return -1;
+    if (write_file(NASM_PERSIST_DIR "/hello.asm", nasm_source,
+                   sizeof(nasm_source) - 1u, 0644) ||
+        run("/bin/nasm", assemble, 1) || sync_path(NASM_PERSIST_DIR "/hello.o") ||
+        run("/bin/vixc", link, 1) || sync_path(NASM_PERSIST_DIR "/hello") ||
+        execute_nasm_generated(NASM_PERSIST_DIR "/hello") ||
+        write_file(NASM_PERSIST_DIR "/first.complete", "complete\n", 9u, 0644))
+        return -1;
+    puts("[nasm_native_first_boot] PASS");
+    return 0;
+}
+
+static int nasm_second_boot(void)
+{
+    char *assemble[] = {"nasm", "-f", "elf64",
+                        NASM_PERSIST_DIR "/hello.asm", "-o",
+                        NASM_PERSIST_DIR "/hello-second.o", 0};
+    char *link[] = {"vixc", "--link", NASM_PERSIST_DIR "/hello-second.o", "-o",
+                    NASM_PERSIST_DIR "/hello-second", 0};
+
+    if (!file_equals(NASM_PERSIST_DIR "/hello.asm", nasm_source,
+                     sizeof(nasm_source) - 1u) ||
+        !path_exists(NASM_PERSIST_DIR "/hello.o") ||
+        !path_exists(NASM_PERSIST_DIR "/hello") ||
+        !file_equals(NASM_PERSIST_DIR "/first.complete", "complete\n", 9u) ||
+        execute_nasm_generated(NASM_PERSIST_DIR "/hello") ||
+        run("/bin/nasm", assemble, 1) || sync_path(NASM_PERSIST_DIR "/hello-second.o") ||
+        run("/bin/vixc", link, 1) || sync_path(NASM_PERSIST_DIR "/hello-second") ||
+        execute_nasm_generated(NASM_PERSIST_DIR "/hello-second")) return -1;
+    puts("[nasm_native_second_boot] PASS");
+    return 0;
+}
+
 static int first_boot(void)
 {
     unsigned char data[DATA_SIZE], verify[DATA_SIZE];
@@ -171,7 +245,8 @@ static int first_boot(void)
         !file_equals(PERSIST_DIR "/preserved", "preserved", 9u) ||
         unlink(PERSIST_DIR "/invalid.vix")) return fail("existing output preservation");
 
-    if (write_file(PERSIST_DIR "/first.complete", "complete\n", 9u, 0644))
+    if (nasm_first_boot() ||
+        write_file(PERSIST_DIR "/first.complete", "complete\n", 9u, 0644))
         return fail("completion marker fsync");
     puts("[persistent_work_first_boot] PASS");
     return 0;
@@ -197,6 +272,7 @@ static int second_boot(void)
         (fd = open(PERSIST_DIR "/data.txt", O_RDONLY)) < 0 ||
         lseek(fd, DATA_SIZE, SEEK_SET) != DATA_SIZE || read_exact(fd, buffer, 3u) ||
         memcmp(buffer, "sec", 3u) || close(fd)) return fail("second-boot mutation");
+    if (nasm_second_boot()) return fail("native nasm second boot");
     puts("[persistent_work_second_boot] PASS");
     return 0;
 }

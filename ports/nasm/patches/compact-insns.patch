@@ -1,0 +1,295 @@
+diff --git a/include/insns.h b/include/insns.h
+index 74a8b14..53b677d 100644
+--- a/include/insns.h
++++ b/include/insns.h
+@@ -33,10 +33,26 @@ struct itemplate {
+ };
+ 
+ /* Instruction tables for the assembler */
++struct compact_itemplate {
++    uint32_t code_offset;
++    uint16_t operands_index;
++    uint16_t decorators_index;
++    uint16_t iflag_idx;
++    uint16_t xdaline;
++    uint8_t operands;
++} __attribute__((packed));
++
+ struct itemplate_list {
+-    unsigned int ntemp;
+-    const struct itemplate *temp;
+-};
++    uint32_t first;
++    uint16_t ntemp;
++} __attribute__((packed));
++
+ extern const struct itemplate_list nasm_instructions[];
++extern const struct compact_itemplate nasm_compact_templates[];
++extern const opflags_t nasm_compact_operands[][MAX_OPERANDS];
++extern const decoflags_t nasm_compact_decorators[][MAX_OPERANDS];
++
++void nasm_decode_itemplate(struct itemplate *result, enum opcode opcode,
++                           unsigned int index);
+ 
+ /* Disassembler table structure */
+diff --git a/asm/assemble.c b/asm/assemble.c
+index 3a8a08f..812870f 100644
+--- a/asm/assemble.c
++++ b/asm/assemble.c
+@@ -2929,17 +2929,38 @@ static uint32_t op_evexflags(const operand * o, uint32_t mask)
+     return evexflags(o->decoflags, mask);
+ }
+ 
++void nasm_decode_itemplate(struct itemplate *result, enum opcode opcode,
++                           unsigned int index)
++{
++    const struct itemplate_list *list = &nasm_instructions[opcode];
++    const struct compact_itemplate *compact =
++        &nasm_compact_templates[list->first + index];
++
++    result->opcode = opcode;
++    result->operands = compact->operands;
++    for (unsigned int operand = 0; operand < MAX_OPERANDS; operand++) {
++        result->opd[operand] =
++            nasm_compact_operands[compact->operands_index][operand];
++        result->deco[operand] =
++            nasm_compact_decorators[compact->decorators_index][operand];
++    }
++    result->code = nasm_bytecodes + compact->code_offset;
++    result->iflag_idx = compact->iflag_idx;
++    result->xdaline = compact->xdaline;
++}
++
+ static enum match_result find_match(insn *instruction)
+ {
+     const int bits = instruction->bits;
+     const struct itemplate_list *templist;
+-    const struct itemplate *temp;
+-    const struct itemplate *best;
++    struct itemplate temp;
++    struct itemplate best;
++    static struct itemplate matched;
+     enum match_result m, merr;
+     int rex = instruction->prefixes[PPS_REX];
+     int n, i, besti;
+ 
+-    instruction->itemp = best = NULL;
++    instruction->itemp = NULL;
+     instruction->itempindex = besti = -1;
+ 
+     /* Impossible encoding request? */
+@@ -2952,12 +2973,12 @@ static enum match_result find_match(insn *instruction)
+ 
+     templist = &nasm_instructions[instruction->opcode];
+     n    = templist->ntemp;
+-    temp = templist->temp;
+ 
+     for (i = 0; i < n; i++) {
+-        m = matches(temp, instruction);
++        nasm_decode_itemplate(&temp, instruction->opcode, i);
++        m = matches(&temp, instruction);
+         if (m > merr) {
+-            best = temp;
++            best = temp;
+             besti = i;
+             merr = m;
+             if (merr == MOK_GOOD)
+@@ -2966,11 +2987,11 @@ static enum match_result find_match(insn *instruction)
+         }
+-        temp++;
+     }
+ 
+     if (merr >= MOK_FIRST) {
+         /* If this was a fuzzy match it is confirmed now */
+         merr = MOK_GOOD;
+-        instruction->itemp = best;
++        matched = best;
++        instruction->itemp = &matched;
+         instruction->itempindex = besti;
+     }
+     return merr;
+diff --git a/asm/nasm.c b/asm/nasm.c
+index 671162b..764af4b 100644
+--- a/asm/nasm.c
++++ b/asm/nasm.c
+@@ -31,6 +31,11 @@
+ #include "files.h"
+ #include "error.h"
+ 
++#ifdef __AUKOS__
++#include <stdlib.h>
++#include <unistd.h>
++#endif
++
+ /*
+  * This is the maximum number of optimization passes to do.  If we ever
+  * find a case where the optimizer doesn't naturally converge, we might
+@@ -53,6 +58,10 @@ static void parse_cmdline(int, char **, int);
+ static void assemble_file(const char *, char const *, struct strlist *);
+ static void help(FILE *out, const char *what);
+ 
++#ifdef __AUKOS__
++static void aukos_prepare_atomic_output(void);
++static FILE *aukos_open_primary_output(enum file_flags);
++#endif
+ static bool using_debug_info;
+ static const char *debug_format;
+ static bool debug_format_owned;
+@@ -80,6 +89,12 @@ FILE *ofile = NULL;
+ enum optimization optimizing = OPTIM_DEFAULT;
+ static int cmd_sb = 16;    /* by default */
+ 
++#ifdef __AUKOS__
++static char *aukos_final_outfile;
++static int aukos_output_fd = -1;
++#define AUKOS_TEMP_SUFFIX ".nasm-tmp-XXXXXX"
++#endif
++
+ static struct debug_prefix_list *debug_prefixes = NULL;
+ 
+ iflag_t cpu, cmd_cpu;
+@@ -718,6 +733,10 @@ int main(int argc, char **argv)
+     } else {
+         depend_list = NULL;
+     }
++
++#ifdef __AUKOS__
++    aukos_prepare_atomic_output();
++#endif
+ 
+     reset_global_defaults(cmd_sb);
+ 
+@@ -748,7 +767,11 @@ int main(int argc, char **argv)
+             const char *outname = get_filename(FN_OUTFILE);
+ 
+             if (outname) {
++#ifdef __AUKOS__
++                ofile = aukos_open_primary_output(NF_TEXT);
++#else
+                 ofile = nasm_open_write(outname, NF_TEXT);
++#endif
+                 if (!ofile)
+                     nasm_fatalf(ERR_PERROR,
+                                 "unable to open output file `%s'", outname);
+@@ -813,7 +836,12 @@ int main(int argc, char **argv)
+ 
+     if (operating_mode & OP_NORMAL) {
+         const char *outname = get_filename(FN_OUTFILE);
++#ifdef __AUKOS__
++        ofile = aukos_open_primary_output((ofmt->flags & OFMT_TEXT) ?
++                                          NF_TEXT : NF_BINARY);
++#else
+         ofile = nasm_open_write(outname, (ofmt->flags & OFMT_TEXT) ? NF_TEXT : NF_BINARY);
++#endif
+         if (!ofile)
+             nasm_fatalf(ERR_PERROR, "unable to open output file `%s'", outname);
+ 
+@@ -1681,6 +1709,10 @@ static void parse_cmdline(int argc, char **argv, int pass)
+ {
+     char *envreal, *envcopy = NULL;
+ 
++#ifdef __AUKOS__
++    stopoptions = false;
++#endif
++
+     /*
+      * Initialize all the warnings to their default state, including
+      * warning index 0 used for "always on".
+@@ -1953,8 +1985,97 @@ static void assemble_file(const char *fname, char const *mname,
+     lfmt->cleanup();
+ }
+ 
++#ifdef __AUKOS__
++static void aukos_prepare_atomic_output(void)
++{
++    const char *outname = get_filename(FN_OUTFILE);
++    char *tempname;
++    int fd;
++
++    if (!outname || !(operating_mode & (OP_NORMAL | OP_PREPROCESS)))
++        return;
++
++    tempname = nasm_strcat(outname, AUKOS_TEMP_SUFFIX);
++    fd = mkstemp(tempname);
++    if (fd < 0)
++        nasm_fatalf(ERR_PERROR,
++                    "unable to create temporary output for `%s'", outname);
++
++    aukos_final_outfile = (char *)outname;
++    _filenames[FN_OUTFILE] = tempname;
++    aukos_output_fd = fd;
++}
++
++static FILE *aukos_open_primary_output(enum file_flags flags)
++{
++    FILE *file;
++    int fd = aukos_output_fd;
++
++    if (fd < 0)
++        return nasm_open_write(get_filename(FN_OUTFILE), flags);
++
++    aukos_output_fd = -1;
++    file = fdopen(fd, (flags & NF_TEXT) ? "wt" : "wb");
++    if (!file)
++        close(fd);
++    return file;
++}
++
++static void aukos_finish_atomic_output(bool error)
++{
++    const char *tempname = get_filename(FN_OUTFILE);
++    int saved_errno = 0;
++    bool failed = error;
++
++    if (ofile) {
++        if (!failed && (fflush(ofile) || ferror(ofile))) {
++            saved_errno = errno;
++            failed = true;
++        }
++        if (!failed && fsync(fileno(ofile))) {
++            saved_errno = errno;
++            failed = true;
++        }
++        if (fclose(ofile) && !failed) {
++            saved_errno = errno;
++            failed = true;
++        }
++        ofile = NULL;
++    } else if (aukos_output_fd >= 0) {
++        if (close(aukos_output_fd) && !failed) {
++            saved_errno = errno;
++            failed = true;
++        }
++        aukos_output_fd = -1;
++    }
++
++    if (!failed && rename(tempname, aukos_final_outfile)) {
++        saved_errno = errno;
++        failed = true;
++    }
++    if (failed)
++        nasm_remove(tempname);
++
++    if (!error && failed) {
++        errno = saved_errno;
++        nasm_nonfatalf(ERR_PERROR,
++                       "unable to commit output file `%s'",
++                       aukos_final_outfile);
++    }
++
++    nasm_free(aukos_final_outfile);
++    aukos_final_outfile = NULL;
++}
++#endif
++
+ void close_output(bool error)
+ {
++#ifdef __AUKOS__
++    if (aukos_final_outfile) {
++        aukos_finish_atomic_output(error);
++        return;
++    }
++#endif
+     if (!ofile)
+         return;
+ 

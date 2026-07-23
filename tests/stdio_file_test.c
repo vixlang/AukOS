@@ -166,8 +166,10 @@ int main(void)
 
     reset_mock();
     expect_mode("r", O_RDONLY);
+    expect_mode("rt", O_RDONLY);
     expect_mode("r+", O_RDWR);
     expect_mode("wb", O_WRONLY | O_CREAT | O_TRUNC);
+    expect_mode("wt", O_WRONLY | O_CREAT | O_TRUNC);
     expect_mode("a+", O_RDWR | O_CREAT | O_APPEND);
     expect_mode("w+xe", O_RDWR | O_CREAT | O_TRUNC | O_EXCL | O_CLOEXEC);
     assert(fopen("/work/file", "") == 0 && errno == EINVAL);
@@ -175,7 +177,7 @@ int main(void)
 
     open_result = -1;
     assert(fopen("/work/missing", "r") == 0);
-    assert(close_calls == 5);
+    assert(close_calls == 7);
     open_result = 0;
 
     for (size_t index = 0; index < 16u; index++) {
@@ -183,7 +185,7 @@ int main(void)
         assert(streams[index] != 0);
     }
     assert(fopen("/work/file", "r") == 0 && errno == EMFILE);
-    assert(close_calls == 6);
+    assert(close_calls == 8);
     for (size_t index = 0; index < 16u; index++) {
         assert(fclose(streams[index]) == 0);
     }
@@ -200,6 +202,10 @@ int main(void)
     assert(feof(stream) != 0);
     assert(fseek(stream, 2, SEEK_SET) == 0);
     assert(feof(stream) == 0);
+    assert(fgets((char *)buffer, 4, stream) == (char *)buffer);
+    assert(strcmp((char *)buffer, "cde") == 0);
+    assert(fgets((char *)buffer, 0, stream) == 0 && errno == EINVAL);
+    assert(fseek(stream, 2, SEEK_SET) == 0);
     assert(getc(stream) == 'c');
     assert(ungetc('Z', stream) == 'Z');
     assert(getc(stream) == 'Z');
@@ -236,5 +242,19 @@ int main(void)
 
     assert(remove("/work/remove-me") == 0);
     assert(unlink_calls == 1);
+
+    mock_offset = 0;
+    mock_size = 0;
+    write_limit = (size_t)-1;
+    errno = ENOENT;
+    perror("nasm");
+    {
+        char expected[64];
+        int expected_size = snprintf(expected, sizeof(expected), "nasm: %s\n",
+                                     strerror(ENOENT));
+        assert(expected_size > 0);
+        assert(mock_size == (size_t)expected_size);
+        assert(memcmp(mock_data, expected, mock_size) == 0);
+    }
     return 0;
 }

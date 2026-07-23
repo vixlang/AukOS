@@ -610,6 +610,10 @@ void tmpfs_init(void)
     extern const unsigned char _binary_build_user_vixc_test_elf_end[];
     extern const unsigned char _binary_build_user_persistence_test_elf_start[];
     extern const unsigned char _binary_build_user_persistence_test_elf_end[];
+    extern const unsigned char _binary_build_user_nasm_test_elf_start[];
+    extern const unsigned char _binary_build_user_nasm_test_elf_end[];
+    extern const unsigned char _binary_build_nasm_aukos_nasm_elf_start[];
+    extern const unsigned char _binary_build_nasm_aukos_nasm_elf_end[];
     extern const unsigned char _binary_build_vix_runtime_runtime_o_start[];
     extern const unsigned char _binary_build_vix_runtime_runtime_o_end[];
     extern const unsigned char _binary_build_toybox_aukos_toybox_elf_start[];
@@ -654,6 +658,8 @@ void tmpfs_init(void)
     EMBED_EXEC(bin, "vixc", build_user_vixc_elf);
     EMBED_EXEC(bin, "vixc_test", build_user_vixc_test_elf);
     EMBED_EXEC(bin, "persistence_test", build_user_persistence_test_elf);
+    EMBED_EXEC(bin, "nasm_test", build_user_nasm_test_elf);
+    EMBED_EXEC(bin, "nasm", build_nasm_aukos_nasm_elf);
     EMBED_EXEC(bin, "toybox", build_toybox_aukos_toybox_elf);
     create_static_file(vix_lib, "runtime.o", _binary_build_vix_runtime_runtime_o_start,
                        (size_t)(_binary_build_vix_runtime_runtime_o_end -

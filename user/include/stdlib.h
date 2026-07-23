@@ -15,7 +15,7 @@ double atof(const char *nptr);
 long double strtold(const char *nptr, char **endptr);
 int atoi(const char *nptr);
 void exit(int code) __attribute__((noreturn));
-void abort(void);
+void abort(void) __attribute__((noreturn));
 int atexit(void (*func)(void));
 void qsort(void *base, size_t nmemb, size_t size, int (*compar)(const void *, const void *));
 

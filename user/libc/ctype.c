@@ -7,5 +7,7 @@ int islower(int c) { return c >= 'a' && c <= 'z'; }
 int isalpha(int c) { return isupper(c) || islower(c); }
 int isalnum(int c) { return isalpha(c) || isdigit(c); }
 int ispunct(int c) { return c > ' ' && c < 127 && !isalnum(c); }
+int iscntrl(int c) { return (c >= 0 && c < ' ') || c == 127; }
+int isascii(int c) { return c >= 0 && c <= 127; }
 int toupper(int c) { return islower(c) ? c - 32 : c; }
 int tolower(int c) { return isupper(c) ? c + 32 : c; }

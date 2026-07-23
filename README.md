@@ -20,6 +20,12 @@ make CONFIG_MK=config.local.mk iso-uefi
 Run host checks with `make test check`. QEMU smoke tests are available as
 `make smoke` and `make smoke-uefi`.
 
+The native assembler is built with `make nasm-host nasm-aukos-port`. Inside
+AukOS, `/bin/nasm -f elf64 input.asm -o output.o` produces a standard ELF64
+relocatable object for the restricted `/bin/vixc --link` path. See
+`docs/nasm.md` for the build split, object contract, smoke workflow, and
+current limits.
+
 ToyBox, the AukOS-specific Vixc snapshot, and NASM are vendored as ordinary
 source directories. They are not submodules. See `docs/third-party.md` for
 their upstream repositories, pinned commits, and licenses.

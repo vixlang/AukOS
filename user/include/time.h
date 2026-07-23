@@ -37,6 +37,7 @@ int clock_gettime(int clockid, struct timespec *tp);
 int nanosleep(const struct timespec *req, struct timespec *rem);
 time_t time(time_t *tloc);
 struct tm *localtime(const time_t *timer);
+struct tm *gmtime(const time_t *timer);
 struct tm *localtime_r(const time_t *timer, struct tm *result);
 time_t mktime(struct tm *tm);
 size_t strftime(char *s, size_t max, const char *format, const struct tm *tm);

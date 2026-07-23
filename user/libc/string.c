@@ -115,6 +115,17 @@ char *strstr(const char *haystack, const char *needle)
     return 0;
 }
 
+char *strpbrk(const char *s, const char *accept)
+{
+    while (*s) {
+        if (strchr(accept, (unsigned char)*s)) {
+            return (char *)s;
+        }
+        s++;
+    }
+    return 0;
+}
+
 char *strdup(const char *s)
 {
     size_t size = strlen(s) + 1;

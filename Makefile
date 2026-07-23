@@ -29,6 +29,7 @@ USER_TOUCH := $(USER_DIR)/touch.elf
 USER_VIXC := $(USER_DIR)/vixc.elf
 USER_VIXC_TEST := $(USER_DIR)/vixc_test.elf
 USER_PERSISTENCE_TEST := $(USER_DIR)/persistence_test.elf
+USER_NASM_TEST := $(USER_DIR)/nasm_test.elf
 USER_VIX_HELLO_OBJ := $(USER_DIR)/hello.vix.o
 USER_ED_OBJ := $(USER_DIR)/ed.vix.o
 USER_TOUCH_OBJ := $(USER_DIR)/touch.vix.o
@@ -39,6 +40,14 @@ USER_TOUCH_BLOB := $(BUILD_DIR)/user/touch.o
 USER_VIXC_BLOB := $(BUILD_DIR)/user/vixc.o
 USER_VIXC_TEST_BLOB := $(BUILD_DIR)/user/vixc_test.o
 USER_PERSISTENCE_TEST_BLOB := $(BUILD_DIR)/user/persistence_test.o
+USER_NASM_TEST_BLOB := $(BUILD_DIR)/user/nasm_test.o
+NASM_HOST := $(BUILD_DIR)/nasm-host/nasm
+NASM_AUKOS := $(BUILD_DIR)/nasm-aukos/nasm.elf
+USER_NASM_BLOB := $(BUILD_DIR)/user/nasm.o
+NASM_SOURCE_DIRS := asm autoconf common config include macros nasmlib output \
+	perllib stdlib tools x86 zlib
+NASM_UPSTREAM_FILES := $(shell find $(addprefix user/nasm/,$(NASM_SOURCE_DIRS)) \
+	-type f -print) $(shell find user/nasm -maxdepth 1 -type f -print)
 USER_AUSH_PARSE_OBJ := $(USER_DIR)/shell_parse.o
 SIGNAL_TEST_LIBC_OBJ := $(BUILD_DIR)/signal-test-libc/system.o
 TOYBOX_HOST := $(TOYBOX_DIR)/toybox
@@ -72,6 +81,7 @@ TOYBOX_LIBC_OBJS := \
 	$(BUILD_DIR)/toybox-libc/time.o \
 	$(BUILD_DIR)/toybox-libc/system.o \
 	$(BUILD_DIR)/toybox-libc/compat.o \
+	$(BUILD_DIR)/toybox-libc/access.o \
 	$(BUILD_DIR)/toybox-libc/stubs.o
 
 VIX_RUNTIME_LIBC_OBJS := \
@@ -183,6 +193,8 @@ KERNEL_OBJS := \
 	$(USER_VIXC_BLOB) \
 	$(USER_VIXC_TEST_BLOB) \
 	$(USER_PERSISTENCE_TEST_BLOB) \
+	$(USER_NASM_TEST_BLOB) \
+	$(USER_NASM_BLOB) \
 	$(VIX_RUNTIME_BLOB) \
 	$(BUILD_DIR)/user/toybox.o \
 	$(VGA_FONT_OBJ)
@@ -241,11 +253,13 @@ KERNEL_UEFI_OBJS := \
 	$(USER_VIXC_BLOB) \
 	$(USER_VIXC_TEST_BLOB) \
 	$(USER_PERSISTENCE_TEST_BLOB) \
+	$(USER_NASM_TEST_BLOB) \
+	$(USER_NASM_BLOB) \
 	$(VIX_RUNTIME_BLOB) \
 	$(BUILD_DIR)/user/toybox.o \
 	$(VGA_FONT_OBJ)
 
-.PHONY: all iso iso-uefi run run-uefi run-debug smoke smoke-uefi check test toybox-host toybox-aukos-config toybox-aukos-port host-vixc clean
+.PHONY: all iso iso-uefi run run-uefi run-debug smoke smoke-uefi check test toybox-host toybox-aukos-config toybox-aukos-port nasm-host nasm-aukos-port host-vixc clean
 
 all: $(KERNEL) $(TOYBOX_AUKOS_BIN) $(VIRTIO_DISK) $(WORK_BASE_DISK) $(WORK_DISK)
 
@@ -283,7 +297,7 @@ run-debug: $(ISO) $(VIRTIO_DISK) $(WORK_DISK)
 		$(QEMU_NET_ARGS) \
 		-boot d -serial stdio -display none -no-reboot -no-shutdown
 
-smoke: $(ISO) $(VIRTIO_DISK) $(WORK_BASE_DISK) $(UDP_ECHO_SERVER) $(UDP_PCAP_CHECK) tools/check_qemu_log.sh tools/run_qemu_smoke.sh
+smoke: $(ISO) $(VIRTIO_DISK) $(WORK_BASE_DISK) $(UDP_ECHO_SERVER) $(UDP_PCAP_CHECK) tools/check_qemu_log.sh tools/check_nasm_guest_artifacts.sh tools/run_qemu_smoke.sh
 	$(Q)mkdir -p $(BUILD_DIR)
 	$(Q)QEMU='$(QEMU)' E2FSCK='$(E2FSCK)' DEBUGFS='$(DEBUGFS)' \
 		sh tools/run_qemu_smoke.sh bios $(ISO) $(VIRTIO_DISK) $(WORK_BASE_DISK) \
@@ -293,7 +307,7 @@ smoke: $(ISO) $(VIRTIO_DISK) $(WORK_BASE_DISK) $(UDP_ECHO_SERVER) $(UDP_PCAP_CHE
 	$(Q)$(UDP_PCAP_CHECK) $(BUILD_DIR)/bios-udp-first.pcap
 	$(Q)$(UDP_PCAP_CHECK) $(BUILD_DIR)/bios-udp.pcap
 
-smoke-uefi: $(ISO_UEFI) $(VIRTIO_DISK) $(WORK_BASE_DISK) $(UDP_ECHO_SERVER) $(UDP_PCAP_CHECK) tools/check_qemu_log.sh tools/run_qemu_smoke.sh
+smoke-uefi: $(ISO_UEFI) $(VIRTIO_DISK) $(WORK_BASE_DISK) $(UDP_ECHO_SERVER) $(UDP_PCAP_CHECK) tools/check_qemu_log.sh tools/check_nasm_guest_artifacts.sh tools/run_qemu_smoke.sh
 	$(Q)mkdir -p $(BUILD_DIR)
 	$(Q)QEMU='$(QEMU)' E2FSCK='$(E2FSCK)' DEBUGFS='$(DEBUGFS)' \
 		sh tools/run_qemu_smoke.sh uefi $(ISO_UEFI) $(VIRTIO_DISK) $(WORK_BASE_DISK) \
@@ -323,15 +337,21 @@ test: $(HOST_TEST_DIR)/ring_buffer_test \
 	$(HOST_TEST_DIR)/libgen_test \
 	$(HOST_TEST_DIR)/stdio_format_test \
 	$(HOST_TEST_DIR)/stdio_file_test \
+	$(HOST_TEST_DIR)/string_test \
+	$(HOST_TEST_DIR)/stdlib_abort_test \
+	$(HOST_TEST_DIR)/ctype_test \
+	$(HOST_TEST_DIR)/time_test \
 	$(HOST_TEST_DIR)/allocator_test \
 	$(HOST_TEST_DIR)/block_test \
 	$(HOST_TEST_DIR)/ext4_write_test \
 	$(HOST_TEST_DIR)/tmpfs_ownership_test \
 	$(HOST_TEST_DIR)/mkstemp_test \
+	$(HOST_TEST_DIR)/access_test \
 	$(HOST_TEST_DIR)/elf_reader_test \
 	$(VIRTIO_DISK) $(WORK_BASE_DISK) \
 	$(USER_CHECK_DIR)/user_posix_compile.o \
 	$(USER_CHECK_DIR)/libc/compat.o \
+	$(USER_CHECK_DIR)/libc/access.o \
 	$(USER_CHECK_DIR)/libc/ctype.o \
 	$(USER_CHECK_DIR)/libc/environment.o \
 	$(USER_CHECK_DIR)/libc/crt0.o \
@@ -361,6 +381,10 @@ test: $(HOST_TEST_DIR)/ring_buffer_test \
 	$(Q)$(HOST_TEST_DIR)/libgen_test
 	$(Q)$(HOST_TEST_DIR)/stdio_format_test
 	$(Q)$(HOST_TEST_DIR)/stdio_file_test
+	$(Q)$(HOST_TEST_DIR)/string_test
+	$(Q)$(HOST_TEST_DIR)/stdlib_abort_test; abort_status=$$?; test $$abort_status -eq 134
+	$(Q)$(HOST_TEST_DIR)/ctype_test
+	$(Q)$(HOST_TEST_DIR)/time_test
 	$(Q)$(HOST_TEST_DIR)/allocator_test
 	$(Q)$(HOST_TEST_DIR)/block_test
 	$(Q)$(HOST_TEST_DIR)/ext4_write_test $(WORK_BASE_DISK) $(BUILD_DIR)/ext4-write-result.img
@@ -368,6 +392,7 @@ test: $(HOST_TEST_DIR)/ring_buffer_test \
 	$(Q)$(E2FSCK) -fn $(BUILD_DIR)/ext4-write-result.img
 	$(Q)$(HOST_TEST_DIR)/tmpfs_ownership_test
 	$(Q)$(HOST_TEST_DIR)/mkstemp_test
+	$(Q)$(HOST_TEST_DIR)/access_test
 	$(Q)$(HOST_TEST_DIR)/elf_reader_test
 
 toybox-host: $(TOYBOX_HOST)
@@ -375,6 +400,21 @@ toybox-host: $(TOYBOX_HOST)
 toybox-aukos-config: $(TOYBOX_AUKOS_CONFIG)
 
 toybox-aukos-port: $(TOYBOX_AUKOS_BIN)
+
+nasm-host: $(NASM_HOST)
+	$(Q)$(MAKE) -C ports/nasm -f Makefile reference compact-test
+
+nasm-aukos-port: $(NASM_AUKOS)
+	$(Q)sh tools/check_nasm_artifact.sh $(NASM_AUKOS)
+
+$(NASM_HOST): ports/nasm/Makefile ports/nasm/sources.mk $(NASM_UPSTREAM_FILES)
+	$(Q)$(MAKE) -C ports/nasm -f Makefile host
+
+$(NASM_AUKOS): ports/nasm/Makefile ports/nasm/sources.mk \
+		ports/nasm/compact_insns.py ports/nasm/patches/compact-insns.patch \
+		$(NASM_UPSTREAM_FILES) $(TOYBOX_LIBC_OBJS)
+	$(Q)$(MAKE) -C ports/nasm -f Makefile aukos
+	$(Q)sh tools/check_nasm_artifact.sh $@
 
 $(TOYBOX_HOST): $(TOYBOX_DIR)/.config
 	$(Q)$(MAKE) -C $(TOYBOX_DIR)
@@ -426,7 +466,7 @@ $(ISO_UEFI): $(KERNEL_UEFI) $(BOOTLOADER_EFI) $(VIRTIO_DISK)
 	$(Q)mkdir -p $(ISO_UEFI_DIR)/EFI/AUKOS
 	$(Q)cp $(BOOTLOADER_EFI) $(ISO_UEFI_DIR)/EFI/BOOT/BOOTX64.EFI
 	$(Q)cp $(KERNEL_UEFI) $(ISO_UEFI_DIR)/EFI/AUKOS/KERNEL.ELF
-	$(Q)dd if=/dev/zero of=$(ISO_UEFI_DIR)/efi.img bs=1M count=2 2>/dev/null
+	$(Q)dd if=/dev/zero of=$(ISO_UEFI_DIR)/efi.img bs=1M count=4 2>/dev/null
 	$(Q)$(MKFS_FAT) -F 12 $(ISO_UEFI_DIR)/efi.img 2>/dev/null
 	$(Q)$(MMD) -i $(ISO_UEFI_DIR)/efi.img ::/EFI ::/EFI/BOOT ::/EFI/AUKOS
 	$(Q)$(MCOPY) -i $(ISO_UEFI_DIR)/efi.img $(BOOTLOADER_EFI) ::/EFI/BOOT/BOOTX64.EFI
@@ -629,7 +669,17 @@ $(USER_PERSISTENCE_TEST): $(USER_DIR)/persistence_test_entry.o $(TOYBOX_LIBC_OBJ
 	$(Q)$(LD) -nostdlib -static -T user/linker.ld -o $@ \
 		$(USER_DIR)/persistence_test_entry.o $(TOYBOX_LIBC_OBJS)
 
+$(USER_NASM_TEST): $(USER_DIR)/nasm_test_entry.o $(TOYBOX_LIBC_OBJS) user/linker.ld
+	$(Q)printf '%s\n' '$(quiet_cmd_userld)'
+	$(Q)$(LD) -nostdlib -static -T user/linker.ld -o $@ \
+		$(USER_DIR)/nasm_test_entry.o $(TOYBOX_LIBC_OBJS)
+
 $(USER_DIR)/persistence_test_entry.o: user/persistence_test.c
+	$(Q)printf '%s\n' '$(quiet_cmd_usercc)'
+	$(Q)mkdir -p $(dir $@)
+	$(Q)$(CC) $(USER_CFLAGS) -c $< -o $@
+
+$(USER_DIR)/nasm_test_entry.o: user/nasm_test.c
 	$(Q)printf '%s\n' '$(quiet_cmd_usercc)'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)$(CC) $(USER_CFLAGS) -c $< -o $@
@@ -768,6 +818,15 @@ $(USER_VIXC_TEST_BLOB): $(USER_VIXC_TEST)
 	$(Q)$(LD) -m elf_x86_64 -r -b binary -o $@ $<
 
 $(USER_PERSISTENCE_TEST_BLOB): $(USER_PERSISTENCE_TEST)
+	$(Q)printf '%s\n' '$(quiet_cmd_binobj)'
+	$(Q)$(LD) -m elf_x86_64 -r -b binary -o $@ $<
+
+$(USER_NASM_TEST_BLOB): $(USER_NASM_TEST)
+	$(Q)printf '%s\n' '$(quiet_cmd_binobj)'
+	$(Q)$(LD) -m elf_x86_64 -r -b binary -o $@ $<
+
+$(USER_NASM_BLOB): $(NASM_AUKOS) tools/check_nasm_artifact.sh
+	$(Q)sh tools/check_nasm_artifact.sh $<
 	$(Q)printf '%s\n' '$(quiet_cmd_binobj)'
 	$(Q)$(LD) -m elf_x86_64 -r -b binary -o $@ $<
 
@@ -975,6 +1034,45 @@ $(HOST_TEST_DIR)/stdio_file_test: tests/stdio_file_test.c user/libc/stdio.c \
 		-Dwrite=aukos_stdio_write -Dlseek=aukos_stdio_lseek \
 		-Dclose=aukos_stdio_close -Dunlink=aukos_stdio_unlink \
 		tests/stdio_file_test.c user/libc/stdio.c -o $@
+
+$(HOST_TEST_DIR)/ctype_test: tests/ctype_test.c user/libc/ctype.c \
+		user/include/ctype.h
+	$(Q)printf '%s\n' '$(quiet_cmd_hostcc)'
+	$(Q)mkdir -p $(dir $@)
+	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Iuser/include \
+		tests/ctype_test.c user/libc/ctype.c -o $@
+
+$(HOST_TEST_DIR)/string_test: tests/string_test.c user/libc/string.c \
+		user/include/string.h
+	$(Q)printf '%s\n' '$(quiet_cmd_hostcc)'
+	$(Q)mkdir -p $(dir $@)
+	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -fno-builtin -Iuser/include \
+		tests/string_test.c user/libc/string.c -o $@
+
+$(HOST_TEST_DIR)/stdlib_abort_test: tests/stdlib_abort_test.c user/libc/stdlib.c \
+		user/include/stdlib.h
+	$(Q)printf '%s\n' '$(quiet_cmd_hostcc)'
+	$(Q)mkdir -p $(dir $@)
+	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -fno-builtin \
+		-ffunction-sections -Wl,--gc-sections -Iuser/include \
+		-Dmalloc=aukos_abort_test_malloc -Dcalloc=aukos_abort_test_calloc \
+		-Drealloc=aukos_abort_test_realloc -Dfree=aukos_abort_test_free \
+		tests/stdlib_abort_test.c user/libc/stdlib.c -o $@
+
+$(HOST_TEST_DIR)/access_test: tests/access_test.c user/libc/access.c \
+		user/include/unistd.h user/include/sys/stat.h
+	$(Q)printf '%s\n' '$(quiet_cmd_hostcc)'
+	$(Q)mkdir -p $(dir $@)
+	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Iuser/include \
+		-Dstat=aukos_access_stat \
+		tests/access_test.c user/libc/access.c -o $@
+
+$(HOST_TEST_DIR)/time_test: tests/time_test.c user/libc/time.c \
+		user/include/time.h
+	$(Q)printf '%s\n' '$(quiet_cmd_hostcc)'
+	$(Q)mkdir -p $(dir $@)
+	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Iuser/include \
+		tests/time_test.c user/libc/time.c -o $@
 
 $(HOST_TEST_DIR)/allocator_test: tests/allocator_test.c user/libc/allocator.c \
 		user/libc/allocator.h

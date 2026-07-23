@@ -46,7 +46,6 @@ size_t strcspn(const char *s, const char *reject) { size_t n = 0; while (s[n] &&
 size_t strspn(const char *s, const char *accept) { size_t n = 0; while (s[n] && strchr(accept, s[n])) n++; return n; }
 void *memchr(const void *s, int c, size_t n) { const unsigned char *p = s; for (size_t i = 0; i < n; i++) if (p[i] == (unsigned char)c) return (void *)(p + i); return 0; }
 
-int access(const char *path, int mode) { (void)path; (void)mode; return 0; }
 mode_t umask(mode_t mask) { (void)mask; return 0; }
 unsigned int sleep(unsigned int seconds) { (void)seconds; return 0; }
 ssize_t readlink(const char *path, char *buf, size_t bufsize) { (void)path; (void)buf; (void)bufsize; errno = ENOSYS; return -1; }
@@ -117,7 +116,6 @@ int sigsuspend(const sigset_t *mask) { (void)mask; errno = ENOSYS; return -1; }
 int killpg(int pgrp, int sig) { (void)pgrp; (void)sig; errno = ENOSYS; return -1; }
 
 time_t mktime(struct tm *tm) { (void)tm; errno = ENOSYS; return (time_t)-1; }
-struct tm *localtime_r(const time_t *timer, struct tm *result) { (void)timer; if (result) memset(result, 0, sizeof(*result)); return result; }
 char *strptime(const char *s, const char *format, struct tm *tm) { (void)s; (void)format; if (tm) memset(tm, 0, sizeof(*tm)); return 0; }
 void tzset(void) {}
 char *ctime(const time_t *timer) { (void)timer; return "Thu Jan  1 00:00:00 1970\n"; }

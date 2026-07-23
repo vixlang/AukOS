@@ -1,5 +1,7 @@
 #include <dirent.h>
 #include <fcntl.h>
+#include <inttypes.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,6 +25,17 @@
 #include <time.h>
 #include <termios.h>
 #include <unistd.h>
+
+static const char integer_formats[] =
+    "%" PRId8 "%" PRIi8 "%" PRIo8 "%" PRIu8 "%" PRIx8 "%" PRIX8
+    "%" PRId16 "%" PRIi16 "%" PRIo16 "%" PRIu16 "%" PRIx16 "%" PRIX16
+    "%" PRId32 "%" PRIi32 "%" PRIo32 "%" PRIu32 "%" PRIx32 "%" PRIX32
+    "%" PRId64 "%" PRIi64 "%" PRIo64 "%" PRIu64 "%" PRIx64 "%" PRIX64;
+
+static const uintmax_t integer_constants[] = {
+    INT8_C(1), UINT8_C(1), INT16_C(1), UINT16_C(1),
+    INT32_C(1), UINT32_C(1), INT64_C(1), UINT64_C(1),
+};
 
 int main(void)
 {
@@ -48,6 +61,9 @@ int main(void)
     int pipefd[2];
     char *const argv[] = {"/bin/sh", 0};
     char *const envp[] = {0};
+
+    (void)integer_formats;
+    (void)integer_constants;
 
     (void)open("/", O_RDONLY);
     (void)openat(AT_FDCWD, "/", O_RDONLY);

@@ -69,6 +69,7 @@ static int parse_mode(const char *mode, int *flags)
 {
     int plus = 0;
     int binary = 0;
+    int text = 0;
     int exclusive = 0;
     int close_on_exec = 0;
     char operation;
@@ -87,6 +88,8 @@ static int parse_mode(const char *mode, int *flags)
             plus = 1;
         } else if (*mode == 'b' && !binary) {
             binary = 1;
+        } else if (*mode == 't' && !text) {
+            text = 1;
         } else if (*mode == 'x' && !exclusive && operation == 'w') {
             exclusive = 1;
         } else if (*mode == 'e' && !close_on_exec) {
@@ -504,6 +507,40 @@ int getchar(void)
     return getc(stdin);
 }
 
+int fgetc(FILE *stream)
+{
+    return getc(stream);
+}
+
+char *fgets(char *s, int size, FILE *stream)
+{
+    int offset = 0;
+
+    if (!s || size <= 0 || !stream_is_open(stream)) {
+        errno = !stream_is_open(stream) ? EBADF : EINVAL;
+        if (stream && stream_is_known(stream)) {
+            stream->error = 1;
+        }
+        return 0;
+    }
+    while (offset + 1 < size) {
+        int value = getc(stream);
+
+        if (value == EOF) {
+            break;
+        }
+        s[offset++] = (char)value;
+        if (value == '\n') {
+            break;
+        }
+    }
+    if (offset == 0 && (stream->eof || stream->error)) {
+        return 0;
+    }
+    s[offset] = '\0';
+    return s;
+}
+
 int ungetc(int c, FILE *stream)
 {
     if (c == EOF || !stream_is_open(stream) || stream->has_ungot) {
@@ -646,6 +683,20 @@ long ftell(FILE *stream)
     return (long)result;
 }
 
+int fseeko(FILE *stream, off_t offset, int whence)
+{
+    if ((off_t)(long)offset != offset) {
+        errno = EOVERFLOW;
+        return -1;
+    }
+    return fseek(stream, (long)offset, whence);
+}
+
+off_t ftello(FILE *stream)
+{
+    return (off_t)ftell(stream);
+}
+
 void rewind(FILE *stream)
 {
     if (fseek(stream, 0, SEEK_SET) == 0) {
@@ -665,4 +716,15 @@ int fileno(FILE *stream)
 int remove(const char *path)
 {
     return unlink(path);
+}
+
+void perror(const char *s)
+{
+    const char *message = strerror(errno);
+
+    if (s && *s) {
+        fprintf(stderr, "%s: %s\n", s, message);
+    } else {
+        fprintf(stderr, "%s\n", message);
+    }
 }
