@@ -34,6 +34,7 @@ USER_VIX_HELLO_OBJ := $(USER_DIR)/hello.vix.o
 USER_ED_OBJ := $(USER_DIR)/ed.vix.o
 USER_TOUCH_OBJ := $(USER_DIR)/touch.vix.o
 VIX_RUNTIME_OBJECT := $(BUILD_DIR)/vix-runtime/runtime.o
+E1000_VIX_OBJECT := $(BUILD_DIR)/kernel/driver/e1000_vix.o
 VIX_RUNTIME_BLOB := $(BUILD_DIR)/user/runtime_reloc.o
 USER_ED_BLOB := $(BUILD_DIR)/user/ed.o
 USER_TOUCH_BLOB := $(BUILD_DIR)/user/touch.o
@@ -64,6 +65,8 @@ VGA_FONT_BIN := $(BUILD_DIR)/vga8x16.bin
 VGA_FONT_OBJ := $(BUILD_DIR)/vga8x16.o
 QEMU_NET_ARGS := -netdev user,id=net0,net=10.0.2.0/24,dhcpstart=10.0.2.15 \
 	-device virtio-net-pci,netdev=net0,disable-modern=on,mac=52:54:00:12:34:56
+QEMU_E1000_NET_ARGS := -netdev user,id=net0,net=10.0.2.0/24,dhcpstart=10.0.2.15 \
+	-device e1000,netdev=net0,mac=52:54:00:12:34:56
 
 TOYBOX_AUKOS_CFLAGS := -target x86_64-unknown-none -std=gnu17 -ffreestanding -fno-stack-protector -fno-pic -mcmodel=large -mno-red-zone -nostdinc -D__linux__ -I$(CURDIR)/user/include -I$(CURDIR)/kernel/include
 
@@ -147,7 +150,10 @@ KERNEL_OBJS := \
 	$(BUILD_DIR)/kernel/block.o \
 	$(BUILD_DIR)/kernel/console.o \
 	$(BUILD_DIR)/kernel/descriptor.o \
+	$(BUILD_DIR)/kernel/driver/e1000_shim.o \
+	$(E1000_VIX_OBJECT) \
 	$(BUILD_DIR)/kernel/elf.o \
+	$(BUILD_DIR)/kernel/ethernet.o \
 	$(BUILD_DIR)/kernel/ext4.o \
 	$(BUILD_DIR)/kernel/fat32.o \
 	$(BUILD_DIR)/kernel/gdt.o \
@@ -207,7 +213,10 @@ KERNEL_UEFI_OBJS := \
 	$(BUILD_DIR)/kernel/block.o \
 	$(BUILD_DIR)/kernel/console.o \
 	$(BUILD_DIR)/kernel/descriptor.o \
+	$(BUILD_DIR)/kernel/driver/e1000_shim.o \
+	$(E1000_VIX_OBJECT) \
 	$(BUILD_DIR)/kernel/elf.o \
+	$(BUILD_DIR)/kernel/ethernet.o \
 	$(BUILD_DIR)/kernel/ext4.o \
 	$(BUILD_DIR)/kernel/fat32.o \
 	$(BUILD_DIR)/kernel/gdt.o \
@@ -259,7 +268,7 @@ KERNEL_UEFI_OBJS := \
 	$(BUILD_DIR)/user/toybox.o \
 	$(VGA_FONT_OBJ)
 
-.PHONY: all iso iso-uefi run run-uefi run-debug smoke smoke-uefi check test toybox-host toybox-aukos-config toybox-aukos-port nasm-host nasm-aukos-port host-vixc clean
+.PHONY: all iso iso-uefi run run-e1000 run-uefi run-debug smoke smoke-uefi check test toybox-host toybox-aukos-config toybox-aukos-port nasm-host nasm-aukos-port host-vixc clean
 
 all: $(KERNEL) $(TOYBOX_AUKOS_BIN) $(VIRTIO_DISK) $(WORK_BASE_DISK) $(WORK_DISK)
 
@@ -276,6 +285,16 @@ run: $(ISO) $(VIRTIO_DISK) $(WORK_DISK)
 		-device virtio-blk-pci,drive=work-disk,disable-modern=on \
 		$(QEMU_NET_ARGS) \
 		-boot d -serial stdio -no-reboot -no-shutdown
+
+run-e1000: $(ISO) $(VIRTIO_DISK) $(WORK_DISK)
+	$(Q)printf '%s\n' 'RUN     $(ISO) (e1000, headless)'
+	$(Q)$(QEMU) -drive file=$(ISO),format=raw,if=ide,media=cdrom,readonly=on \
+		-drive file=$(VIRTIO_DISK),format=raw,if=none,id=virtio-disk \
+		-device virtio-blk-pci,drive=virtio-disk,disable-modern=on \
+		-drive file=$(WORK_DISK),format=raw,if=none,id=work-disk \
+		-device virtio-blk-pci,drive=work-disk,disable-modern=on \
+		$(QEMU_E1000_NET_ARGS) \
+		-boot d -serial stdio -display none -no-reboot -no-shutdown
 
 run-uefi: $(ISO_UEFI) $(VIRTIO_DISK) $(WORK_DISK)
 	$(Q)printf '%s\n' '$(quiet_cmd_run_uefi)'
@@ -703,6 +722,12 @@ $(USER_ED_OBJ): user/ed.vix $(VIXC_GATE)
 	$(Q)ulimit -s 65536 && $(VIXC) --target $(VIX_TARGET) -obj $< -o $@
 
 $(USER_TOUCH_OBJ): user/touch.vix $(VIXC_GATE)
+	$(Q)printf '%s\n' 'VIXC    $@'
+	$(Q)mkdir -p $(dir $@)
+	$(Q)ulimit -s 65536 && $(VIXC) --target $(VIX_TARGET) -obj $< -o $@
+
+$(E1000_VIX_OBJECT): kernel/driver/e1000.vix $(VIXC_GATE)
+	@command -v $(VIXC) >/dev/null || { echo "error: host Vix compiler not found: $(VIXC)"; exit 1; }
 	$(Q)printf '%s\n' 'VIXC    $@'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)ulimit -s 65536 && $(VIXC) --target $(VIX_TARGET) -obj $< -o $@

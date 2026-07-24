@@ -10,6 +10,7 @@
 #define PCI_CONFIG_DATA 0xcfcu
 #define PCI_MAX_DEVICES 256u
 #define PCI_COMMAND_IO_SPACE 0x0001u
+#define PCI_COMMAND_MEMORY_SPACE 0x0002u
 #define PCI_COMMAND_BUS_MASTER 0x0004u
 
 static struct pci_device devices[PCI_MAX_DEVICES];
@@ -152,20 +153,43 @@ int pci_get_io_bar(const struct pci_device *device, uint8_t index, uint16_t *io_
     return pci_parse_io_bar(device->bars[index], io_base);
 }
 
-int pci_enable_io_bus_master(const struct pci_device *device)
+int pci_get_memory_bar32(const struct pci_device *device, uint8_t index,
+                         uintptr_t *physical_base)
+{
+    if (!device || index >= device->bar_count) {
+        return -1;
+    }
+    return pci_parse_memory_bar32(device->bars[index], physical_base);
+}
+
+static int enable_command_bits(const struct pci_device *device, uint16_t bits)
 {
     uint16_t command;
 
     if (!device ||
-        config_read16(device->bus, device->slot, device->function, 0x04u, &command) != 0) {
+        config_read16(device->bus, device->slot, device->function, 0x04u,
+                      &command) != 0) {
         return -1;
     }
-    command |= PCI_COMMAND_IO_SPACE | PCI_COMMAND_BUS_MASTER;
-    if (config_write16(device->bus, device->slot, device->function, 0x04u, command) != 0 ||
-        config_read16(device->bus, device->slot, device->function, 0x04u, &command) != 0 ||
-        (command & (PCI_COMMAND_IO_SPACE | PCI_COMMAND_BUS_MASTER)) !=
-            (PCI_COMMAND_IO_SPACE | PCI_COMMAND_BUS_MASTER)) {
+    command |= bits;
+    if (config_write16(device->bus, device->slot, device->function, 0x04u,
+                       command) != 0 ||
+        config_read16(device->bus, device->slot, device->function, 0x04u,
+                      &command) != 0 ||
+        (command & bits) != bits) {
         return -1;
     }
     return 0;
+}
+
+int pci_enable_io_bus_master(const struct pci_device *device)
+{
+    return enable_command_bits(device, PCI_COMMAND_IO_SPACE |
+                               PCI_COMMAND_BUS_MASTER);
+}
+
+int pci_enable_memory_bus_master(const struct pci_device *device)
+{
+    return enable_command_bits(device, PCI_COMMAND_MEMORY_SPACE |
+                               PCI_COMMAND_BUS_MASTER);
 }

@@ -1,5 +1,6 @@
 #include "include/aukos/console.h"
 #include "include/aukos/elf.h"
+#include "include/aukos/ethernet.h"
 #include "include/aukos/ext4.h"
 #include "include/aukos/fat32.h"
 #include "include/aukos/gdt.h"
@@ -22,7 +23,6 @@
 #include "include/aukos/tmpfs.h"
 #include "include/aukos/vmm.h"
 #include "include/aukos/virtio_blk.h"
-#include "include/aukos/virtio_net.h"
 
 #include <stdint.h>
 
@@ -81,7 +81,7 @@ void kernel_main(uint32_t multiboot_magic, uintptr_t multiboot_info)
         fat32_run_selftest();
         ext4_run_selftest();
         net_init();
-        virtio_net_init();
+        ethernet_init();
         net_run_selftest();
         keyboard_init();
     } else {

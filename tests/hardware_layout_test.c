@@ -15,6 +15,7 @@ int main(int argc, char **argv)
 {
     uint32_t address = 0;
     uint16_t io_base = 0;
+    uintptr_t memory_base = 0;
     size_t used_offset = 0;
     size_t total_size = 0;
     uint8_t image[VIRTIO_BLK_FIXTURE_SECTORS * 512u];
@@ -29,6 +30,10 @@ int main(int argc, char **argv)
     failures += expect(pci_parse_io_bar(0xffffffffu, &io_base) != 0);
     failures += expect(pci_parse_io_bar(0x10000001u, &io_base) != 0);
     failures += expect(pci_parse_io_bar(0x0000c000u, &io_base) != 0);
+    failures += expect(pci_parse_memory_bar32(0xfebc0000u, &memory_base) == 0 &&
+                       memory_base == (uintptr_t)0xfebc0000u);
+    failures += expect(pci_parse_memory_bar32(0x0000c001u, &memory_base) != 0);
+    failures += expect(pci_parse_memory_bar32(0xffffffffu, &memory_base) != 0);
     failures += expect(virtio_legacy_queue_layout(128u, &used_offset, &total_size) == 0 &&
                        used_offset == 4096u && total_size == 5124u);
     failures += expect(virtio_legacy_queue_layout(0u, &used_offset, &total_size) != 0);

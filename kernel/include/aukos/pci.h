@@ -48,12 +48,32 @@ static inline int pci_parse_io_bar(uint32_t raw_bar, uint16_t *io_base)
     return 0;
 }
 
+static inline int pci_parse_memory_bar32(uint32_t raw_bar,
+                                         uintptr_t *physical_base)
+{
+    uintptr_t address;
+
+    if (!physical_base || raw_bar == 0xffffffffu || (raw_bar & 1u) != 0u ||
+        ((raw_bar >> 1) & 3u) != 0u) {
+        return -1;
+    }
+    address = (uintptr_t)(raw_bar & ~0x0fu);
+    if (address == 0u) {
+        return -1;
+    }
+    *physical_base = address;
+    return 0;
+}
+
 void pci_init(void);
 const struct pci_device *pci_find_device(uint16_t vendor_id, uint16_t device_id);
 const struct pci_device *pci_find_device_nth(uint16_t vendor_id,
                                              uint16_t device_id,
                                              uint16_t match_index);
 int pci_get_io_bar(const struct pci_device *device, uint8_t index, uint16_t *io_base);
+int pci_get_memory_bar32(const struct pci_device *device, uint8_t index,
+                         uintptr_t *physical_base);
 int pci_enable_io_bus_master(const struct pci_device *device);
+int pci_enable_memory_bus_master(const struct pci_device *device);
 
 #endif

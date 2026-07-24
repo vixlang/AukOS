@@ -1,0 +1,284 @@
+// Intel 8254x/e1000 polling driver. The C shim only supplies volatile I/O and
+// fixed-layout DMA storage, which Vix cannot express yet.
+extern "C"
+{
+    fn e1000_shim_prepare(): i32
+    fn e1000_shim_reg_read(offset: i32): i32
+    fn e1000_shim_reg_write(offset: i32, value: i32)
+    fn e1000_shim_pause()
+    fn e1000_shim_wait_timer_ticks(count: i32)
+    fn e1000_shim_barrier()
+    fn e1000_shim_ring_address_low(transmit: i32): i32
+    fn e1000_shim_ring_address_high(transmit: i32): i32
+    fn e1000_shim_reset_rings(): i32
+    fn e1000_shim_state_get(slot: i32): i32
+    fn e1000_shim_state_set(slot: i32, value: i32)
+    fn e1000_shim_mac_set(index: i32, value: i32)
+    fn e1000_shim_mac_copy(destination: ptr): i32
+    fn e1000_shim_rx_status(index: i32): i32
+    fn e1000_shim_rx_errors(index: i32): i32
+    fn e1000_shim_rx_length(index: i32): i32
+    fn e1000_shim_rx_copy(index: i32, destination: ptr, length: i32): i32
+    fn e1000_shim_rx_rearm(index: i32)
+    fn e1000_shim_store_size(destination: ptr, value: usize)
+    fn e1000_shim_tx_status(index: i32): i32
+    fn e1000_shim_tx_submit(index: i32, source: ptr, length: usize): i32
+    fn log_write(level: i32, message: string)
+}
+
+fn e1000_reset_controller(): i32
+{
+    let control = e1000_shim_reg_read(0)
+    e1000_shim_reg_write(0, control | 67108864)
+
+    let mut spin = 0
+    while (spin < 100000)
+    {
+        if ((e1000_shim_reg_read(0) & 67108864) == 0) { return 0 }
+        e1000_shim_pause()
+        spin += 1
+    }
+    return -1
+}
+
+fn e1000_read_eeprom_word(address: i32): i32
+{
+    // 8254x EERD: START bit 0, address bits 8..15, DONE bit 4.
+    e1000_shim_reg_write(20, 1 | (address << 8))
+    let mut spin = 0
+    while (spin < 100000)
+    {
+        let value = e1000_shim_reg_read(20)
+        if ((value & 16) != 0) { return (value >> 16) & 65535 }
+        e1000_shim_pause()
+        spin += 1
+    }
+    return -1
+}
+
+fn e1000_load_mac_address(): i32
+{
+    let low = e1000_shim_reg_read(21504)
+    let high = e1000_shim_reg_read(21508)
+    let high_address = high & 65535
+
+    if ((low != 0 or high_address != 0) and
+        (low != (0 - 1) or high_address != 65535))
+    {
+        e1000_shim_mac_set(0, low & 255)
+        e1000_shim_mac_set(1, (low >> 8) & 255)
+        e1000_shim_mac_set(2, (low >> 16) & 255)
+        e1000_shim_mac_set(3, (low >> 24) & 255)
+        e1000_shim_mac_set(4, high & 255)
+        e1000_shim_mac_set(5, (high >> 8) & 255)
+        e1000_shim_reg_write(21504, low)
+        e1000_shim_reg_write(21508, high | (1 << 31))
+        return 0
+    }
+
+    let word0 = e1000_read_eeprom_word(0)
+    let word1 = e1000_read_eeprom_word(1)
+    let word2 = e1000_read_eeprom_word(2)
+    if (word0 < 0 or word1 < 0 or word2 < 0)
+    {
+        return -1
+    }
+    if (word0 == 0 and word1 == 0 and word2 == 0) { return -1 }
+    if (word0 == 65535 and word1 == 65535 and word2 == 65535) { return -1 }
+
+    e1000_shim_mac_set(0, word0 & 255)
+    e1000_shim_mac_set(1, (word0 >> 8) & 255)
+    e1000_shim_mac_set(2, word1 & 255)
+    e1000_shim_mac_set(3, (word1 >> 8) & 255)
+    e1000_shim_mac_set(4, word2 & 255)
+    e1000_shim_mac_set(5, (word2 >> 8) & 255)
+    e1000_shim_reg_write(21504, word0 | (word1 << 16))
+    e1000_shim_reg_write(21508, word2 | (1 << 31))
+    return 0
+}
+
+fn e1000_initialize_receive_ring(): i32
+{
+    e1000_shim_reg_write(10240, e1000_shim_ring_address_low(0))
+    e1000_shim_reg_write(10244, e1000_shim_ring_address_high(0))
+    e1000_shim_reg_write(10248, 512)
+    e1000_shim_reg_write(10256, 0)
+    e1000_shim_reg_write(10264, 31)
+
+    // EN | BAM | SECRC, 2048-byte buffers and no receive offloads.
+    e1000_shim_reg_write(256, 67141634)
+    return 0
+}
+
+fn e1000_initialize_transmit_ring(): i32
+{
+    e1000_shim_reg_write(14336, e1000_shim_ring_address_low(1))
+    e1000_shim_reg_write(14340, e1000_shim_ring_address_high(1))
+    e1000_shim_reg_write(14344, 128)
+    e1000_shim_reg_write(14352, 0)
+    e1000_shim_reg_write(14360, 0)
+
+    // EN | PSP | CT=0x0f | COLD=0x40.
+    e1000_shim_reg_write(1024, 17039610)
+    // IPGT=10, IPGR1=8, IPGR2=6.
+    e1000_shim_reg_write(1040, 6299658)
+    return 0
+}
+
+fn e1000_wait_for_receive_stable()
+{
+    // QEMU's e1000 model defers RX for one second after RCTL changes.
+    e1000_shim_wait_timer_ticks(105)
+}
+
+pub fn e1000_init(): i32
+{
+    e1000_shim_state_set(0, 0)
+    let prepare_result = e1000_shim_prepare()
+    if (prepare_result != 0)
+    {
+        if (prepare_result != -1)
+        {
+            log_write(3, "e1000: PCI register transport unavailable")
+        }
+        return -1
+    }
+
+    // Mask and acknowledge all interrupts; this driver intentionally polls.
+    e1000_shim_reg_write(216, 0 - 1)
+    e1000_shim_reg_read(192)
+    if (e1000_reset_controller() != 0)
+    {
+        log_write(3, "e1000: controller reset timed out")
+        return -1
+    }
+    e1000_shim_reg_write(216, 0 - 1)
+    e1000_shim_reg_read(192)
+
+    // Assert Set Link Up and disable legacy flow control.
+    e1000_shim_reg_write(0, e1000_shim_reg_read(0) | 64)
+    e1000_shim_reg_write(40, 0)
+    e1000_shim_reg_write(44, 0)
+    e1000_shim_reg_write(48, 0)
+    e1000_shim_reg_write(368, 0)
+
+    if (e1000_load_mac_address() != 0)
+    {
+        log_write(3, "e1000: hardware MAC address is invalid")
+        return -1
+    }
+    for (index in 0 .. 128)
+    {
+        e1000_shim_reg_write(20992 + index * 4, 0)
+    }
+    if (e1000_shim_reset_rings() != 0)
+    {
+        log_write(3, "e1000: failed to allocate descriptor rings")
+        return -1
+    }
+    if (e1000_initialize_receive_ring() != 0 or
+        e1000_initialize_transmit_ring() != 0)
+    {
+        log_write(3, "e1000: failed to configure descriptor rings")
+        return -1
+    }
+    e1000_wait_for_receive_stable()
+
+    e1000_shim_state_set(0, 1)
+    log_write(1, "e1000: RX/TX descriptor rings initialized (polling)")
+    return 0
+}
+
+pub fn e1000_is_ready(): i32
+{
+    return e1000_shim_state_get(0)
+}
+
+pub fn e1000_get_mac(destination: ptr): i32
+{
+    if (e1000_shim_state_get(0) == 0 or destination == 0) { return -1 }
+    return e1000_shim_mac_copy(destination)
+}
+
+pub fn e1000_send_frame(frame: ptr, frame_length: usize): i32
+{
+    if (e1000_shim_state_get(0) == 0 or frame == 0 or
+        frame_length < 60 or frame_length > 1514)
+    {
+        return -1
+    }
+
+    let index = e1000_shim_state_get(2)
+    let mut spin = 0
+    while (spin < 1000000 and (e1000_shim_tx_status(index) & 1) == 0)
+    {
+        e1000_shim_pause()
+        spin += 1
+    }
+    if ((e1000_shim_tx_status(index) & 1) == 0)
+    {
+        e1000_shim_state_set(0, 0)
+        return -1
+    }
+
+    if (e1000_shim_tx_submit(index, frame, frame_length) != 0) { return -1 }
+    e1000_shim_barrier()
+    let next = (index + 1) % 8
+    e1000_shim_reg_write(14360, next)
+
+    spin = 0
+    while (spin < 1000000 and (e1000_shim_tx_status(index) & 1) == 0)
+    {
+        e1000_shim_pause()
+        spin += 1
+    }
+    if ((e1000_shim_tx_status(index) & 1) == 0)
+    {
+        e1000_shim_state_set(0, 0)
+        return -1
+    }
+    e1000_shim_state_set(2, next)
+    return 0
+}
+
+pub fn e1000_poll_receive(frame: ptr, capacity: usize,
+                          frame_length: ptr): i32
+{
+    if (e1000_shim_state_get(0) == 0 or frame == 0 or frame_length == 0)
+    {
+        return -1
+    }
+
+    let index = e1000_shim_state_get(1)
+    let mut status = e1000_shim_rx_status(index)
+    let mut spin = 0
+    while (spin < 1000000 and (status & 1) == 0)
+    {
+        e1000_shim_pause()
+        status = e1000_shim_rx_status(index)
+        spin += 1
+    }
+    if ((status & 1) == 0)
+    {
+        return 1
+    }
+
+    let length = e1000_shim_rx_length(index)
+    let valid = (status & 2) != 0 and e1000_shim_rx_errors(index) == 0 and
+                length >= 14 and length <= 1514 and length <= capacity
+    let mut result = -1
+    if (valid)
+    {
+        if (e1000_shim_rx_copy(index, frame, length) == 0)
+        {
+            e1000_shim_store_size(frame_length, length)
+            result = 0
+        }
+    }
+
+    e1000_shim_rx_rearm(index)
+    e1000_shim_barrier()
+    e1000_shim_reg_write(10264, index)
+    e1000_shim_state_set(1, (index + 1) % 32)
+    return result
+}

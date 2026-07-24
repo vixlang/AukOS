@@ -1,9 +1,9 @@
 #include "include/aukos/net.h"
 
+#include "include/aukos/ethernet.h"
 #include "include/aukos/log.h"
 #include "include/aukos/net_packets.h"
 #include "include/aukos/udp_socket.h"
-#include "include/aukos/virtio_net.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -83,11 +83,11 @@ static int resolve_gateway(const uint8_t local_mac[NET_MAC_SIZE])
     if (net_build_arp_request(request, sizeof(request), local_mac,
                               configured_local_ip, configured_gateway_ip,
                               &request_length) != 0 ||
-        virtio_net_send_frame(request, request_length) != 0) {
+        ethernet_send_frame(request, request_length) != 0) {
         return -1;
     }
     for (uint32_t packet = 0; packet < NET_RX_PACKET_LIMIT; packet++) {
-        if (virtio_net_poll_receive(reply, sizeof(reply), &reply_length) != 0) {
+        if (ethernet_poll_receive(reply, sizeof(reply), &reply_length) != 0) {
             return -1;
         }
         if (net_parse_ethernet(reply, reply_length, local_mac, 1,
@@ -126,11 +126,11 @@ static int echo_gateway(const uint8_t local_mac[NET_MAC_SIZE])
             configured_local_ip, gateway_entry.ipv4,
             NET_IP_IDENTIFICATION, NET_ICMP_IDENTIFIER, NET_ICMP_SEQUENCE,
             echo_payload, sizeof(echo_payload) - 1u, &request_length) != 0 ||
-        virtio_net_send_frame(request, request_length) != 0) {
+        ethernet_send_frame(request, request_length) != 0) {
         return -1;
     }
     for (uint32_t packet = 0; packet < NET_RX_PACKET_LIMIT; packet++) {
-        if (virtio_net_poll_receive(reply, sizeof(reply), &reply_length) != 0) {
+        if (ethernet_poll_receive(reply, sizeof(reply), &reply_length) != 0) {
             return -1;
         }
         if (net_parse_ethernet(reply, reply_length, local_mac, 1,
@@ -163,21 +163,21 @@ void net_run_selftest(void)
     gateway_entry.valid = 0;
     bytes_zero(gateway_entry.ipv4, sizeof(gateway_entry.ipv4));
     bytes_zero(gateway_entry.mac, sizeof(gateway_entry.mac));
-    if (!status.initialized || !virtio_net_is_ready() ||
-        virtio_net_get_mac(local_mac) != 0) {
+    if (!status.initialized || !ethernet_is_ready() ||
+        ethernet_get_mac(local_mac) != 0) {
         log_error("net: Ethernet frame API unavailable");
         return;
     }
     status.ethernet_ready = 1;
     if (resolve_gateway(local_mac) != 0) {
-        if (!virtio_net_is_ready()) {
+        if (!ethernet_is_ready()) {
             status.ethernet_ready = 0;
         }
         log_error("net: gateway ARP resolution failed");
         return;
     }
     if (echo_gateway(local_mac) != 0) {
-        if (!virtio_net_is_ready()) {
+        if (!ethernet_is_ready()) {
             status.ethernet_ready = 0;
         }
         log_error("net: gateway IPv4/ICMP echo failed");
@@ -190,7 +190,7 @@ void net_run_selftest(void)
 struct udp_socket *net_udp_socket_create(void)
 {
     if (!status.udp_ready || !gateway_entry.valid ||
-        !virtio_net_is_ready()) {
+        !ethernet_is_ready()) {
         return 0;
     }
     return udp_socket_allocate();
@@ -247,13 +247,13 @@ int net_udp_socket_sendto(struct udp_socket *socket, const uint8_t *payload,
         !sent_length || !gateway_entry.valid ||
         !bytes_equal(destination_ip, configured_gateway_ip,
                      NET_IPV4_ADDRESS_SIZE) ||
-        virtio_net_get_mac(local_mac) != 0 ||
+        ethernet_get_mac(local_mac) != 0 ||
         net_build_udp_datagram(
             frame, sizeof(frame), local_mac, gateway_entry.mac,
             configured_local_ip, destination_ip, udp_ip_identification++,
             socket->local_port, destination_port, payload, payload_length,
             &frame_length) != 0 ||
-        virtio_net_send_frame(frame, frame_length) != 0) {
+        ethernet_send_frame(frame, frame_length) != 0) {
         return -1;
     }
     *sent_length = payload_length;
@@ -269,11 +269,11 @@ static int poll_and_demux_udp(void)
     size_t frame_length;
     int receive_result;
 
-    if (virtio_net_get_mac(local_mac) != 0) {
+    if (ethernet_get_mac(local_mac) != 0) {
         return -1;
     }
-    receive_result = virtio_net_poll_receive(frame, sizeof(frame),
-                                             &frame_length);
+    receive_result = ethernet_poll_receive(frame, sizeof(frame),
+                                           &frame_length);
     if (receive_result != 0) {
         return receive_result;
     }
