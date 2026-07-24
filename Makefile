@@ -270,21 +270,21 @@ KERNEL_UEFI_OBJS := \
 
 .PHONY: all iso iso-uefi run run-e1000 run-uefi run-debug smoke smoke-uefi check test toybox-host toybox-aukos-config toybox-aukos-port nasm-host nasm-aukos-port host-vixc clean
 
-all: $(KERNEL) $(TOYBOX_AUKOS_BIN) $(VIRTIO_DISK) $(WORK_BASE_DISK) $(WORK_DISK)
+all: $(KERNEL_UEFI) $(TOYBOX_AUKOS_BIN) $(VIRTIO_DISK) $(WORK_BASE_DISK) $(WORK_DISK)S_BIN) $(VIRTIO_DISK) $(WORK_BASE_DISK) $(WORK_DISK)
 
 iso: $(ISO)
 
 iso-uefi: $(ISO_UEFI)
 
-run: $(ISO) $(VIRTIO_DISK) $(WORK_DISK)
+run: $(ISO_UEFI) $(VIRTIO_DISK) $(WORK_DISK)
 	$(Q)printf '%s\n' '$(quiet_cmd_run)'
-	$(Q)$(QEMU) -drive file=$(ISO),format=raw,if=ide,media=cdrom,readonly=on \
+	$(Q)$(QEMU) -drive file=$(ISO_UEFI),format=raw,if=ide,media=cdrom,readonly=on \
 		-drive file=$(VIRTIO_DISK),format=raw,if=none,id=virtio-disk \
 		-device virtio-blk-pci,drive=virtio-disk,disable-modern=on \
 		-drive file=$(WORK_DISK),format=raw,if=none,id=work-disk \
 		-device virtio-blk-pci,drive=work-disk,disable-modern=on \
 		$(QEMU_NET_ARGS) \
-		-boot d -serial stdio -no-reboot -no-shutdown
+		-bios $(OVMF_PATH) -boot d -serial stdio -no-reboot -no-shutdown
 
 run-e1000: $(ISO) $(VIRTIO_DISK) $(WORK_DISK)
 	$(Q)printf '%s\n' 'RUN     $(ISO) (e1000, headless)'
@@ -304,7 +304,7 @@ run-uefi: $(ISO_UEFI) $(VIRTIO_DISK) $(WORK_DISK)
 		-drive file=$(WORK_DISK),format=raw,if=none,id=work-disk \
 		-device virtio-blk-pci,drive=work-disk,disable-modern=on \
 		$(QEMU_NET_ARGS) \
-		-bios $(OVMF_PATH) -serial stdio -display none -no-reboot -no-shutdown
+		-bios $(OVMF_PATH) -serial stdio -no-reboot -no-shutdown
 
 run-debug: $(ISO) $(VIRTIO_DISK) $(WORK_DISK)
 	$(Q)printf '%s\n' '$(quiet_cmd_run_debug)'

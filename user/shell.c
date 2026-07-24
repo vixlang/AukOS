@@ -208,8 +208,8 @@ static void applet_clear(void)
 
 static void applet_help(void)
 {
-    write_str("aush builtins: help clear fs cd signal_test exit\n");
-    write_str("commands: default to /bin/toybox applet dispatch\n");
+    write_str("Welcome to the aush!\n");
+    write_str("type help to get tips\n");
 }
 
 static int applet_cd(const struct shell_command *command)

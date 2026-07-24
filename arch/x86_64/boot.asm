@@ -1,6 +1,6 @@
 BITS 32
 
-MB2_MAGIC equ 0xe85250d6
+MB2_MAGIC equ 0xe85250d6 ;;magic num
 MB2_ARCH_I386 equ 0
 MB2_HEADER_LENGTH equ multiboot_header_end - multiboot_header
 MB2_CHECKSUM equ -(MB2_MAGIC + MB2_ARCH_I386 + MB2_HEADER_LENGTH)
@@ -13,7 +13,7 @@ section .multiboot
 align 8
 multiboot_header:
     dd MB2_MAGIC
-    dd MB2_ARCH_I386
+    dd MB2_ARCH_I386 ;; start from 32位保护
     dd MB2_HEADER_LENGTH
     dd MB2_CHECKSUM
     dw 0
