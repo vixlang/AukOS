@@ -31,7 +31,9 @@ void _exit(int code) __attribute__((noreturn));
 
 int chdir(const char *path);
 int unlink(const char *path);
+int unlinkat(int dirfd, const char *path, int flags);
 int rmdir(const char *path);
+int faccessat(int dirfd, const char *path, int mode, int flags);
 int fchown(int fd, uid_t owner, gid_t group);
 int lchown(const char *path, uid_t owner, gid_t group);
 mode_t umask(mode_t mask);

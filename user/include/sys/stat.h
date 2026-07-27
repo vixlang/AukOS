@@ -61,6 +61,7 @@ int chown(const char *path, uid_t owner, gid_t group);
 int fchownat(int dirfd, const char *path, uid_t owner, gid_t group, int flags);
 int mkdir(const char *path, mode_t mode);
 int mkdirat(int dirfd, const char *path, mode_t mode);
+int faccessat(int dirfd, const char *path, int mode, int flags);
 int mknod(const char *path, mode_t mode, dev_t dev);
 int mknodat(int dirfd, const char *path, mode_t mode, dev_t dev);
 int mkfifo(const char *path, mode_t mode);

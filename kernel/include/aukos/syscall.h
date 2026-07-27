@@ -46,6 +46,7 @@
 #define SYS_RT_SIGPENDING 127u
 #define SYS_GETDENTS64 217u
 #define SYS_READLINKAT 267u
+#define SYS_RMDIR 1029u
 
 /* AukOS-specific syscall numbers */
 #define SYS_TIME 1024u

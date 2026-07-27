@@ -407,7 +407,8 @@ static int tmpfs_unlink(struct vfs_inode *directory, const char *name)
     size_t index;
 
     if (child_index(parent, name, &index) != 0 ||
-        parent->children[index]->type == VFS_FILE_DIRECTORY) {
+        (parent->children[index]->type == VFS_FILE_DIRECTORY &&
+         parent->children[index]->child_count != 0u)) {
         return -1;
     }
     node = remove_child(parent, index);

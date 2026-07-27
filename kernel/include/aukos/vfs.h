@@ -126,6 +126,7 @@ int vfs_stat_path(const char *path, struct vfs_stat *stat);
 int vfs_readdir(struct vfs_file *file, void *buf, size_t count);
 int vfs_lookup(const char *path, struct vfs_inode **out_inode);
 int vfs_unlink(const char *path);
+int vfs_rmdir(const char *path);
 int vfs_mkdir(const char *path, uint32_t mode);
 int vfs_truncate(const char *path, uint64_t length);
 int vfs_ftruncate(struct vfs_file *file, uint64_t length);

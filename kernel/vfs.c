@@ -504,17 +504,50 @@ int vfs_unlink(const char *path)
     char parent_path[VFS_MAX_PATH];
     char filename[VFS_MAX_NAME];
     struct vfs_inode *parent_dir;
+    struct vfs_inode *target;
 
     if (!path || path_normalize(path, normalized, sizeof(normalized)) != 0 ||
         path_parent_and_name(normalized, parent_path, sizeof(parent_path), filename, sizeof(filename)) != 0) {
         return -1;
     }
 
-    if (vfs_lookup(parent_path, &parent_dir) != 0 || !parent_dir->ops || !parent_dir->ops->unlink) {
+    if (vfs_lookup(parent_path, &parent_dir) != 0 ||
+        vfs_lookup(normalized, &target) != 0 ||
+        target->type == VFS_FILE_DIRECTORY || !parent_dir->ops ||
+        !parent_dir->ops->unlink) {
         return -1;
     }
 
     return parent_dir->ops->unlink(parent_dir, filename);
+}
+
+int vfs_rmdir(const char *path)
+{
+    char normalized[VFS_MAX_PATH];
+    char parent_path[VFS_MAX_PATH];
+    char dirname[VFS_MAX_NAME];
+    struct vfs_inode *parent_dir;
+    struct vfs_inode *target;
+    struct vfs_file probe;
+    struct vfs_dirent entry;
+
+    if (!path || path_normalize(path, normalized, sizeof(normalized)) != 0 ||
+        path_parent_and_name(normalized, parent_path, sizeof(parent_path),
+                             dirname, sizeof(dirname)) != 0 ||
+        vfs_lookup(parent_path, &parent_dir) != 0 ||
+        vfs_lookup(normalized, &target) != 0 ||
+        target->type != VFS_FILE_DIRECTORY || !parent_dir->ops ||
+        !parent_dir->ops->unlink || !target->ops || !target->ops->readdir) {
+        return -1;
+    }
+
+    memory_zero(&probe, sizeof(probe));
+    probe.inode = target;
+    probe.allocated = 1u;
+    if (target->ops->readdir(&probe, &entry, sizeof(entry)) != 0) {
+        return -1;
+    }
+    return parent_dir->ops->unlink(parent_dir, dirname);
 }
 
 int vfs_mkdir(const char *path, uint32_t mode)

@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
 
@@ -166,3 +167,33 @@ int aukos_vix_fseek(void *stream, long offset, int whence)
 }
 long aukos_vix_ftell(void *stream) { return ftell((FILE *)stream); }
 int aukos_vix_remove(const char *path) { return remove(path); }
+
+int aukos_vix_fork(void) { return fork(); }
+
+int aukos_vix_execve(const char *path, const char **argv, const char **envp)
+{
+    return execve(path, (char *const *)argv, (char *const *)envp);
+}
+
+int aukos_vix_waitpid(int pid, int *status, int options)
+{
+    return waitpid(pid, status, options);
+}
+
+int aukos_vix_pipe(int *read_fd, int *write_fd)
+{
+    int fds[2];
+
+    if (pipe(fds) != 0) { return -1; }
+    *read_fd = fds[0];
+    *write_fd = fds[1];
+    return 0;
+}
+
+int aukos_vix_dup2(int oldfd, int newfd) { return dup2(oldfd, newfd); }
+int aukos_vix_chdir(const char *path) { return chdir(path); }
+
+int aukos_vix_getcwd(char *buf, size_t size)
+{
+    return getcwd(buf, size) ? 0 : -1;
+}

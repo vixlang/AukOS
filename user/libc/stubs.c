@@ -120,7 +120,6 @@ char *strptime(const char *s, const char *format, struct tm *tm) { (void)s; (voi
 void tzset(void) {}
 char *ctime(const time_t *timer) { (void)timer; return "Thu Jan  1 00:00:00 1970\n"; }
 
-int mkdirat(int dirfd, const char *path, mode_t mode) { (void)dirfd; (void)path; (void)mode; errno = ENOSYS; return -1; }
 int fchmodat(int dirfd, const char *path, mode_t mode, int flags) { (void)dirfd; (void)path; (void)mode; (void)flags; errno = ENOSYS; return -1; }
 int fchmod(int fd, mode_t mode) { (void)fd; (void)mode; errno = ENOSYS; return -1; }
 int chmod(const char *path, mode_t mode) { (void)path; (void)mode; errno = ENOSYS; return -1; }
@@ -138,7 +137,6 @@ int getpwuid_r(uid_t uid, struct passwd *pwd, char *buf, size_t buflen, struct p
 int getgrnam_r(const char *name, struct group *grp, char *buf, size_t buflen, struct group **result) { (void)name; (void)grp; (void)buf; (void)buflen; if (result) *result = 0; return 0; }
 int getgrgid_r(gid_t gid, struct group *grp, char *buf, size_t buflen, struct group **result) { (void)gid; (void)grp; (void)buf; (void)buflen; if (result) *result = 0; return 0; }
 
-int rmdir(const char *path) { (void)path; errno = ENOSYS; return -1; }
 int fchown(int fd, uid_t owner, gid_t group) { (void)fd; (void)owner; (void)group; errno = ENOSYS; return -1; }
 int lchown(const char *path, uid_t owner, gid_t group) { (void)path; (void)owner; (void)group; errno = ENOSYS; return -1; }
 int symlink(const char *target, const char *linkpath) { (void)target; (void)linkpath; errno = ENOSYS; return -1; }

@@ -642,6 +642,17 @@ static uint64_t syscall_unlink(uint64_t path_address)
     return 0;
 }
 
+static uint64_t syscall_rmdir(uint64_t path_address)
+{
+    char path[VFS_MAX_PATH];
+
+    if (resolve_process_path((const char *)path_address, path) != 0 ||
+        vfs_rmdir(path) != 0) {
+        return UINT64_MAX;
+    }
+    return 0;
+}
+
 static uint64_t syscall_fsync(uint64_t fd)
 {
     struct vfs_file *file;
@@ -1688,6 +1699,9 @@ void syscall_dispatch(struct user_context *ctx)
     case SYS_UNLINK:
         ctx->rax = syscall_unlink(arg0);
         break;
+    case SYS_RMDIR:
+        ctx->rax = syscall_rmdir(arg0);
+        break;
     case SYS_GETDENTS64:
         ctx->rax = syscall_getdents64(arg0, arg1, arg2);
         break;
@@ -1869,10 +1883,12 @@ void syscall_run_vfs_selftest(void)
         selftest_dispatch(SYS_OPEN, (uint64_t)file_path, 2u, 0) != UINT64_MAX ||
         selftest_dispatch(SYS_WRITE, fd, (uint64_t)"Q", 1) != 1 ||
         selftest_dispatch(SYS_CLOSE, fd, 0, 0) != 0 ||
-        selftest_dispatch(SYS_UNLINK, (uint64_t)dir_path, 0, 0) != UINT64_MAX) {
-        log_error("syscall: VFS self-test unlink failed");
+        selftest_dispatch(SYS_UNLINK, (uint64_t)dir_path, 0, 0) != UINT64_MAX ||
+        selftest_dispatch(SYS_RMDIR, (uint64_t)dir_path, 0, 0) != 0 ||
+        selftest_dispatch(SYS_RMDIR, (uint64_t)dir_path, 0, 0) != UINT64_MAX) {
+        log_error("syscall: VFS self-test unlink/rmdir failed");
         return;
     }
 
-    log_info("syscall: VFS truncate/append/mkdir/unlink self-test passed");
+    log_info("syscall: VFS truncate/append/mkdir/unlink/rmdir self-test passed");
 }

@@ -1157,13 +1157,21 @@ static int ext4_unlink(struct vfs_inode *directory, const char *name)
     uint8_t block[EXT4_MAX_BLOCK_SIZE];
     uint64_t physical;
     uint32_t ino;
+    int removing_directory;
     if (!dir || directory->type != VFS_FILE_DIRECTORY || !valid_name(name) ||
         !(fs = &dir->mount->fs)->writable ||
         find_in_directory(fs, &dir->disk_inode, name, &ino) ||
-        !(node = get_node(dir->mount, ino)) || node->inode.type == VFS_FILE_DIRECTORY ||
+        !(node = get_node(dir->mount, ino)) ||
         directory_block(fs, &dir->disk_inode, &physical) || read_block(fs, physical, block) ||
         dir_remove_buffer(block, fs->block_size, name, &ino) ||
         write_block(fs, physical, block)) return -1;
+    removing_directory = node->inode.type == VFS_FILE_DIRECTORY;
+    if (removing_directory) {
+        if (dir->disk_inode.links > 0u) dir->disk_inode.links--;
+        if (write_inode(fs, &dir->disk_inode)) return -1;
+        if (fs->used_dirs > 0u) fs->used_dirs--;
+        if (write_free_counts(fs)) return -1;
+    }
     node->linked = 0;
     node->disk_inode.links = 0;
     return reclaim_node(node);
