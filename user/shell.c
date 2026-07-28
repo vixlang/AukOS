@@ -616,6 +616,16 @@ void _start(uint64_t argc, char **argv, char **envp) {
       write_str("[shell_test] cd FAIL\n");
     }
     applets_ok &= run_startup_command("ls /ext4") == 0;
+    if (run_startup_command("mkdir /tmp/empty-ls-test") == 0 &&
+        run_startup_command("cd /tmp/empty-ls-test") == 0 &&
+        run_startup_command("ls") == 0 &&
+        run_startup_command("cd /") == 0 &&
+        run_startup_command("rmdir /tmp/empty-ls-test") == 0) {
+      write_str("[empty_directory_ls_test] PASS\n");
+    } else {
+      applets_ok = 0;
+      write_str("[empty_directory_ls_test] FAIL\n");
+    }
     if (run_startup_command("ls -1d /bin /ext4/hello.txt /bin/toybox") == 0) {
       write_str("[ls_color_test] PASS\n");
     } else {

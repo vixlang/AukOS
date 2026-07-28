@@ -56,7 +56,7 @@ void qsort(void *base, size_t nmemb, size_t size, int (*compar)(const void *, co
 {
     char *arr = base;
     char tmp[256];
-    if (size > sizeof(tmp)) return;
+    if (nmemb < 2 || size == 0 || size > sizeof(tmp)) return;
     for (size_t i = 0; i < nmemb - 1; i++) {
         for (size_t j = i + 1; j < nmemb; j++) {
             if (compar(arr + i * size, arr + j * size) > 0) {
