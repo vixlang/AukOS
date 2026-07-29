@@ -14,12 +14,12 @@ runtime shim so their register ABI has one stable implementation.
 `/bin/vix_hello` is built as:
 
 ```text
-user/apps/hello.vix
+user/coreutils/vix_hello.vix
   -> vixc --target x86_64-unknown-none -obj
-  -> build/user/hello.vix.o
+  -> build/user/coreutils/vix_hello.vix.o
   +  user/runtime/entry.c
   +  user/runtime/runtime.c
-  -> static build/user/language_hello.elf
+  -> static build/user/coreutils/vix_hello.elf
 ```
 
 The Vix function checks `argc`, indexes `argv`, walks `envp`, calls C string

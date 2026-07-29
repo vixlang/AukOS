@@ -6,6 +6,14 @@ ISO_UEFI_DIR := $(BUILD_DIR)/iso-uefi
 HOST_TEST_DIR := $(BUILD_DIR)/host-tests
 USER_CHECK_DIR := $(BUILD_DIR)/user-check
 USER_DIR := $(BUILD_DIR)/user
+COREUTILS_DIR := user/coreutils
+COREUTILS_BUILD_DIR := $(USER_DIR)/coreutils
+COREUTILS_SOURCES := $(sort $(wildcard $(COREUTILS_DIR)/*.vix))
+COREUTILS_NAMES := $(basename $(notdir $(COREUTILS_SOURCES)))
+COREUTILS_BINS := $(addprefix $(COREUTILS_BUILD_DIR)/,$(addsuffix .elf,$(COREUTILS_NAMES)))
+COREUTILS_OBJECTS := $(COREUTILS_BINS:.elf=.vix.o)
+COREUTILS_BLOBS := $(addprefix $(BUILD_DIR)/user/coreutils/,$(addsuffix .o,$(COREUTILS_NAMES)))
+COREUTILS_EMBED_HEADER := $(BUILD_DIR)/coreutils_embed.h
 KERNEL := $(BUILD_DIR)/aukos.elf
 KERNEL_UEFI := $(BUILD_DIR)/aukos_uefi.elf
 BOOTLOADER_ELF := $(BUILD_DIR)/bootloader.elf
@@ -22,28 +30,17 @@ USER_PIPE_TEST := $(USER_DIR)/pipe_test.elf
 USER_PROCESS_ENV_TEST := $(USER_DIR)/process_env_test.elf
 USER_PROCESS_STACK_TEST := $(USER_DIR)/process_stack_test.elf
 USER_FILE_API_TEST := $(USER_DIR)/file_api_test.elf
-USER_VIX_HELLO := $(USER_DIR)/language_hello.elf
 USER_VIX_RUNTIME_TEST := $(USER_DIR)/language_runtime_test.elf
 USER_ED := $(USER_DIR)/ed.elf
-USER_CLEAR := $(USER_DIR)/clear.elf
-USER_TOUCH := $(USER_DIR)/touch.elf
-USER_PING := $(USER_DIR)/ping.elf
 USER_VIXC := $(USER_DIR)/vixc.elf
 USER_VIXC_TEST := $(USER_DIR)/vixc_test.elf
 USER_PERSISTENCE_TEST := $(USER_DIR)/persistence_test.elf
 USER_NASM_TEST := $(USER_DIR)/nasm_test.elf
-USER_VIX_HELLO_OBJ := $(USER_DIR)/hello.vix.o
 USER_ED_OBJ := $(USER_DIR)/ed.vix.o
-USER_CLEAR_OBJ := $(USER_DIR)/clear.vix.o
-USER_PING_OBJ := $(USER_DIR)/ping.vix.o
-USER_TOUCH_OBJ := $(USER_DIR)/touch.vix.o
 VIX_RUNTIME_OBJECT := $(BUILD_DIR)/vix-runtime/runtime.o
 E1000_VIX_OBJECT := $(BUILD_DIR)/kernel/drivers/e1000/e1000_vix.o
 VIX_RUNTIME_BLOB := $(BUILD_DIR)/user/runtime_reloc.o
 USER_ED_BLOB := $(BUILD_DIR)/user/ed.o
-USER_CLEAR_BLOB := $(BUILD_DIR)/user/clear.o
-USER_TOUCH_BLOB := $(BUILD_DIR)/user/touch.o
-USER_PING_BLOB := $(BUILD_DIR)/user/ping.o
 USER_VIXC_BLOB := $(BUILD_DIR)/user/vixc.o
 USER_VIXC_TEST_BLOB := $(BUILD_DIR)/user/vixc_test.o
 USER_PERSISTENCE_TEST_BLOB := $(BUILD_DIR)/user/persistence_test.o
@@ -135,7 +132,7 @@ quiet_cmd_efi = EFI     $@
 quiet_cmd_objcopy = OBJCOPY $@
 
 CFLAGS := -target x86_64-unknown-none -std=c17 -ffreestanding -fno-stack-protector \
-	-fno-pic -mno-red-zone -Wall -Wextra -Werror -Ikernel -Ikernel/include
+	-fno-pic -mno-red-zone -Wall -Wextra -Werror -I$(BUILD_DIR) -Ikernel -Ikernel/include
 USER_CFLAGS := -target x86_64-unknown-none -std=c17 -ffreestanding -fno-stack-protector \
 	-fno-pic -mcmodel=large -mno-red-zone -Wall -Wextra -Werror -Iuser/include
 ASFLAGS := -f elf64
@@ -144,7 +141,7 @@ LDFLAGS_UEFI := -nostdlib -static -z max-page-size=0x1000 -T arch/x86_64/linker_
 
 EFI_CFLAGS := -target x86_64-unknown-none -std=c17 -ffreestanding -fno-stack-protector \
 	-fpic -mno-red-zone -fshort-wchar -Wall -Wextra -Werror \
-	-I$(EFI_INCLUDE_DIR) -I$(EFI_ARCH_INCLUDE_DIR) -Ikernel -Ikernel/include \
+	-I$(BUILD_DIR) -I$(EFI_INCLUDE_DIR) -I$(EFI_ARCH_INCLUDE_DIR) -Ikernel -Ikernel/include \
 	-DEFI_FUNCTION_WRAPPER
 EFI_LDFLAGS := -nostdlib -static -T $(EFI_LDS) \
 	$(EFI_CRT0) -L$(EFI_LIB_DIR) -lefi -lgnuefi
@@ -200,17 +197,14 @@ KERNEL_OBJS := \
 	$(BUILD_DIR)/user/process_env_test.o \
 	$(BUILD_DIR)/user/process_stack_test.o \
 	$(BUILD_DIR)/user/file_api_test.o \
-	$(BUILD_DIR)/user/language_hello.o \
 	$(BUILD_DIR)/user/language_runtime_test.o \
 	$(USER_ED_BLOB) \
-	$(USER_CLEAR_BLOB) \
-	$(USER_TOUCH_BLOB) \
-	$(USER_PING_BLOB) \
 	$(USER_VIXC_BLOB) \
 	$(USER_VIXC_TEST_BLOB) \
 	$(USER_PERSISTENCE_TEST_BLOB) \
 	$(USER_NASM_TEST_BLOB) \
 	$(USER_NASM_BLOB) \
+	$(COREUTILS_BLOBS) \
 	$(VIX_RUNTIME_BLOB) \
 	$(BUILD_DIR)/user/toybox.o \
 	$(VGA_FONT_OBJ)
@@ -266,17 +260,14 @@ KERNEL_UEFI_OBJS := \
 	$(BUILD_DIR)/user/process_env_test.o \
 	$(BUILD_DIR)/user/process_stack_test.o \
 	$(BUILD_DIR)/user/file_api_test.o \
-	$(BUILD_DIR)/user/language_hello.o \
 	$(BUILD_DIR)/user/language_runtime_test.o \
 	$(USER_ED_BLOB) \
-	$(USER_CLEAR_BLOB) \
-	$(USER_TOUCH_BLOB) \
 	$(USER_VIXC_BLOB) \
-	$(USER_PING_BLOB) \
 	$(USER_VIXC_TEST_BLOB) \
 	$(USER_PERSISTENCE_TEST_BLOB) \
 	$(USER_NASM_TEST_BLOB) \
 	$(USER_NASM_BLOB) \
+	$(COREUTILS_BLOBS) \
 	$(VIX_RUNTIME_BLOB) \
 	$(BUILD_DIR)/user/toybox.o \
 	$(VGA_FONT_OBJ)
@@ -622,13 +613,6 @@ $(USER_FILE_API_TEST): $(USER_DIR)/file_api_test_entry.o $(TOYBOX_LIBC_OBJS) use
 	$(Q)$(LD) -nostdlib -static -T user/linker.ld -o $@ \
 		$(USER_DIR)/file_api_test_entry.o $(TOYBOX_LIBC_OBJS)
 
-$(USER_VIX_HELLO): $(USER_VIX_HELLO_OBJ) $(USER_DIR)/entry.o \
-		$(USER_DIR)/runtime.o $(VIX_RUNTIME_LIBC_OBJS) user/linker.ld
-	$(Q)printf '%s\n' '$(quiet_cmd_userld)'
-	$(Q)$(LD) -nostdlib -static -T user/linker.ld -o $@ \
-		$(USER_DIR)/entry.o $(USER_DIR)/runtime.o \
-		$(USER_VIX_HELLO_OBJ) $(VIX_RUNTIME_LIBC_OBJS)
-
 $(USER_VIX_RUNTIME_TEST): $(USER_DIR)/runtime_test_entry.o \
 		$(USER_DIR)/runtime.o $(TOYBOX_LIBC_OBJS) user/linker.ld
 	$(Q)printf '%s\n' '$(quiet_cmd_userld)'
@@ -643,30 +627,6 @@ $(USER_ED): $(USER_ED_OBJ) $(USER_DIR)/entry.o \
 	$(Q)$(LD) -nostdlib -static -T user/linker.ld -o $@ \
 		$(USER_DIR)/entry.o $(USER_DIR)/runtime.o \
 		$(USER_ED_OBJ) $(VIXC_LANGUAGE_RUNTIME_OBJECT) $(VIX_RUNTIME_LIBC_OBJS)
-
-$(USER_CLEAR): $(USER_CLEAR_OBJ) $(USER_DIR)/entry.o \
-		$(USER_DIR)/runtime.o $(VIXC_LANGUAGE_RUNTIME_OBJECT) \
-		$(VIX_RUNTIME_LIBC_OBJS) user/linker.ld
-	$(Q)printf '%s\n' '$(quiet_cmd_userld)'
-	$(Q)$(LD) -nostdlib -static -T user/linker.ld -o $@ \
-		$(USER_DIR)/entry.o $(USER_DIR)/runtime.o \
-		$(USER_CLEAR_OBJ) $(VIXC_LANGUAGE_RUNTIME_OBJECT) $(VIX_RUNTIME_LIBC_OBJS)
-
-$(USER_TOUCH): $(USER_TOUCH_OBJ) $(USER_DIR)/entry.o \
-		$(USER_DIR)/runtime.o $(VIXC_LANGUAGE_RUNTIME_OBJECT) \
-		$(VIX_RUNTIME_LIBC_OBJS) user/linker.ld
-	$(Q)printf '%s\n' '$(quiet_cmd_userld)'
-	$(Q)$(LD) -nostdlib -static -T user/linker.ld -o $@ \
-		$(USER_DIR)/entry.o $(USER_DIR)/runtime.o \
-		$(USER_TOUCH_OBJ) $(VIXC_LANGUAGE_RUNTIME_OBJECT) $(VIX_RUNTIME_LIBC_OBJS)
-
-$(USER_PING): $(USER_PING_OBJ) $(USER_DIR)/entry.o \
-		$(USER_DIR)/runtime.o $(VIXC_LANGUAGE_RUNTIME_OBJECT) \
-		$(VIX_RUNTIME_LIBC_OBJS) user/linker.ld
-	$(Q)printf '%s\n' '$(quiet_cmd_userld)'
-	$(Q)$(LD) -nostdlib -static -T user/linker.ld -o $@ \
-		$(USER_DIR)/entry.o $(USER_DIR)/runtime.o \
-		$(USER_PING_OBJ) $(VIXC_LANGUAGE_RUNTIME_OBJECT) $(VIX_RUNTIME_LIBC_OBJS)
 
 host-vixc: $(VIXC_HOST_TARGET)
 
@@ -752,28 +712,7 @@ $(VIX_RUNTIME_OBJECT): $(USER_DIR)/entry.o $(USER_DIR)/runtime.o \
 	$(Q)$(LD) -r -o $@ $(USER_DIR)/entry.o $(USER_DIR)/runtime.o \
 		$(VIXC_LANGUAGE_RUNTIME_OBJECT) $(VIX_RUNTIME_LIBC_OBJS)
 
-$(USER_VIX_HELLO_OBJ): user/apps/hello.vix $(VIXC_GATE)
-	@command -v $(VIXC) >/dev/null || { echo "error: host Vix compiler not found: $(VIXC)"; exit 1; }
-	$(Q)printf '%s\n' 'VIXC    $@'
-	$(Q)mkdir -p $(dir $@)
-	$(Q)ulimit -s 65536 && $(VIXC) --target $(VIX_TARGET) -obj $< -o $@
-
 $(USER_ED_OBJ): user/apps/ed.vix $(VIXC_GATE)
-	$(Q)printf '%s\n' 'VIXC    $@'
-	$(Q)mkdir -p $(dir $@)
-	$(Q)ulimit -s 65536 && $(VIXC) --target $(VIX_TARGET) -obj $< -o $@
-
-$(USER_CLEAR_OBJ): user/apps/clear.vix $(VIXC_GATE)
-	$(Q)printf '%s\n' 'VIXC    $@'
-	$(Q)mkdir -p $(dir $@)
-	$(Q)ulimit -s 65536 && $(VIXC) --target $(VIX_TARGET) -obj $< -o $@
-
-$(USER_TOUCH_OBJ): user/apps/touch.vix $(VIXC_GATE)
-	$(Q)printf '%s\n' 'VIXC    $@'
-	$(Q)mkdir -p $(dir $@)
-	$(Q)ulimit -s 65536 && $(VIXC) --target $(VIX_TARGET) -obj $< -o $@
-
-$(USER_PING_OBJ): user/apps/ping.vix $(VIXC_GATE)
 	$(Q)printf '%s\n' 'VIXC    $@'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)ulimit -s 65536 && $(VIXC) --target $(VIX_TARGET) -obj $< -o $@
@@ -870,27 +809,11 @@ $(BUILD_DIR)/user/file_api_test.o: $(USER_FILE_API_TEST)
 	$(Q)printf '%s\n' '$(quiet_cmd_binobj)'
 	$(Q)$(LD) -m elf_x86_64 -r -b binary -o $@ $<
 
-$(BUILD_DIR)/user/language_hello.o: $(USER_VIX_HELLO)
-	$(Q)printf '%s\n' '$(quiet_cmd_binobj)'
-	$(Q)$(LD) -m elf_x86_64 -r -b binary -o $@ $<
-
 $(BUILD_DIR)/user/language_runtime_test.o: $(USER_VIX_RUNTIME_TEST)
 	$(Q)printf '%s\n' '$(quiet_cmd_binobj)'
 	$(Q)$(LD) -m elf_x86_64 -r -b binary -o $@ $<
 
 $(USER_ED_BLOB): $(USER_ED)
-	$(Q)printf '%s\n' '$(quiet_cmd_binobj)'
-	$(Q)$(LD) -m elf_x86_64 -r -b binary -o $@ $<
-
-$(USER_CLEAR_BLOB): $(USER_CLEAR)
-	$(Q)printf '%s\n' '$(quiet_cmd_binobj)'
-	$(Q)$(LD) -m elf_x86_64 -r -b binary -o $@ $<
-
-$(USER_TOUCH_BLOB): $(USER_TOUCH)
-	$(Q)printf '%s\n' '$(quiet_cmd_binobj)'
-	$(Q)$(LD) -m elf_x86_64 -r -b binary -o $@ $<
-
-$(USER_PING_BLOB): $(USER_PING)
 	$(Q)printf '%s\n' '$(quiet_cmd_binobj)'
 	$(Q)$(LD) -m elf_x86_64 -r -b binary -o $@ $<
 
@@ -918,6 +841,44 @@ $(USER_NASM_BLOB): $(NASM_AUKOS) tools/check_nasm_artifact.sh
 $(VIX_RUNTIME_BLOB): $(VIX_RUNTIME_OBJECT)
 	$(Q)printf '%s\n' '$(quiet_cmd_binobj)'
 	$(Q)$(LD) -m elf_x86_64 -r -b binary -o $@ $<
+
+$(COREUTILS_EMBED_HEADER): $(COREUTILS_DIR) $(COREUTILS_BINS)
+	$(Q)mkdir -p $(dir $@)
+	$(Q){ \
+		printf '%s\n' '#ifndef AUKOS_COREUTILS_EMBED_H'; \
+		printf '%s\n' '#define AUKOS_COREUTILS_EMBED_H'; \
+		for name in $(COREUTILS_NAMES); do \
+			printf '%s\n' "extern const unsigned char _binary_build_user_coreutils_$${name}_elf_start[];"; \
+			printf '%s\n' "extern const unsigned char _binary_build_user_coreutils_$${name}_elf_end[];"; \
+		done; \
+		printf '%s\n' ''; \
+		printf '%s\n' '#define EMBED_COREUTILS(parent) do { \'; \
+		for name in $(COREUTILS_NAMES); do \
+			printf '%s\n' "    create_static_file((parent), \"$${name}\", \\"; \
+			printf '%s\n' "        _binary_build_user_coreutils_$${name}_elf_start, \\"; \
+			printf '%s\n' "        (size_t)(_binary_build_user_coreutils_$${name}_elf_end - \\"; \
+			printf '%s\n' "                 _binary_build_user_coreutils_$${name}_elf_start), 0555u); \\"; \
+		done; \
+		printf '%s\n' '} while (0)'; \
+		printf '%s\n' ''; \
+		printf '%s\n' '#endif'; \
+	} > $@
+
+$(COREUTILS_BINS): $(COREUTILS_BUILD_DIR)/%.elf: $(COREUTILS_DIR)/%.vix $(VIXC_GATE) \
+		$(USER_DIR)/entry.o $(USER_DIR)/runtime.o \
+		$(VIXC_LANGUAGE_RUNTIME_OBJECT) $(VIX_RUNTIME_LIBC_OBJS)
+	$(Q)mkdir -p $(dir $@)
+	$(Q)ulimit -s 65536 && $(VIXC) --target $(VIX_TARGET) -obj $< -o $(patsubst %.elf,%.vix.o,$@)
+	$(Q)$(LD) -nostdlib -static -T user/linker.ld -o $@ \
+		$(USER_DIR)/entry.o $(USER_DIR)/runtime.o \
+		$(patsubst %.elf,%.vix.o,$@) $(VIXC_LANGUAGE_RUNTIME_OBJECT) \
+		$(VIX_RUNTIME_LIBC_OBJS)
+
+$(COREUTILS_BLOBS): $(BUILD_DIR)/user/coreutils/%.o: $(COREUTILS_BUILD_DIR)/%.elf
+	$(Q)printf '%s\n' '$(quiet_cmd_binobj)'
+	$(Q)$(LD) -m elf_x86_64 -r -b binary -o $@ $<
+
+$(BUILD_DIR)/kernel/fs/tmpfs.o: $(COREUTILS_EMBED_HEADER)
 
 $(BUILD_DIR)/user/toybox.o: $(TOYBOX_AUKOS_BIN)
 	$(Q)printf '%s\n' '$(quiet_cmd_binobj)'

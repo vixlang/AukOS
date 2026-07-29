@@ -4,6 +4,10 @@
 #include "include/aukos/memory.h"
 #include "include/aukos/vfs.h"
 
+#ifndef AUKOS_HOST_TEST
+#include "coreutils_embed.h"
+#endif
+
 #include <stddef.h>
 #include <stdint.h>
 
@@ -597,18 +601,10 @@ void tmpfs_init(void)
     extern const unsigned char _binary_build_user_process_stack_test_elf_end[];
     extern const unsigned char _binary_build_user_file_api_test_elf_start[];
     extern const unsigned char _binary_build_user_file_api_test_elf_end[];
-    extern const unsigned char _binary_build_user_language_hello_elf_start[];
-    extern const unsigned char _binary_build_user_language_hello_elf_end[];
     extern const unsigned char _binary_build_user_language_runtime_test_elf_start[];
     extern const unsigned char _binary_build_user_language_runtime_test_elf_end[];
     extern const unsigned char _binary_build_user_ed_elf_start[];
     extern const unsigned char _binary_build_user_ed_elf_end[];
-    extern const unsigned char _binary_build_user_clear_elf_start[];
-    extern const unsigned char _binary_build_user_clear_elf_end[];
-    extern const unsigned char _binary_build_user_touch_elf_start[];
-    extern const unsigned char _binary_build_user_touch_elf_end[];
-    extern const unsigned char _binary_build_user_ping_elf_start[];
-    extern const unsigned char _binary_build_user_ping_elf_end[];
     extern const unsigned char _binary_build_user_vixc_elf_start[];
     extern const unsigned char _binary_build_user_vixc_elf_end[];
     extern const unsigned char _binary_build_user_vixc_test_elf_start[];
@@ -656,18 +652,15 @@ void tmpfs_init(void)
     EMBED_EXEC(bin, "process_env_test", build_user_process_env_test_elf);
     EMBED_EXEC(bin, "process_stack_test", build_user_process_stack_test_elf);
     EMBED_EXEC(bin, "file_api_test", build_user_file_api_test_elf);
-    EMBED_EXEC(bin, "vix_hello", build_user_language_hello_elf);
     EMBED_EXEC(bin, "vix_runtime_test", build_user_language_runtime_test_elf);
     EMBED_EXEC(bin, "ed", build_user_ed_elf);
-    EMBED_EXEC(bin, "clear", build_user_clear_elf);
-    EMBED_EXEC(bin, "touch", build_user_touch_elf);
-    EMBED_EXEC(bin, "ping", build_user_ping_elf);
     EMBED_EXEC(bin, "vixc", build_user_vixc_elf);
     EMBED_EXEC(bin, "vixc_test", build_user_vixc_test_elf);
     EMBED_EXEC(bin, "persistence_test", build_user_persistence_test_elf);
     EMBED_EXEC(bin, "nasm_test", build_user_nasm_test_elf);
     EMBED_EXEC(bin, "nasm", build_nasm_aukos_nasm_elf);
     EMBED_EXEC(bin, "toybox", build_toybox_aukos_toybox_elf);
+    EMBED_COREUTILS(bin);
     create_static_file(vix_lib, "runtime.o", _binary_build_vix_runtime_runtime_o_start,
                        (size_t)(_binary_build_vix_runtime_runtime_o_end -
                                 _binary_build_vix_runtime_runtime_o_start),
