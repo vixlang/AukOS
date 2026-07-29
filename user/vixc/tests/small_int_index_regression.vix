@@ -1,0 +1,11 @@
+fn main(): i32
+{
+    let bytes: [u8 * 2]
+    bytes[0] = 46
+    bytes[1] = 0
+
+    if (bytes[0] != '.') { return 1 }
+    if (bytes[0] != 46) { return 2 }
+    if (bytes[1] == '.') { return 3 }
+    return 0
+}

@@ -127,6 +127,7 @@ clean:
 
 test: all
 	sh tests/lexer_error_regression.sh $(TARGET)
+	sh tests/small_int_index_regression.sh $(TARGET)
 	$(TARGET) tests/block_comment_regression.vix -o test
 	./test >/dev/null
 

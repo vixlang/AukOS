@@ -408,7 +408,8 @@ pub fn codegen_expr_value_typed(b: &LlvmBuilder, es: &ExprStore, store: &StmtSto
         let element_ty = llvm_type_for(element_ty_text)
         let indices = [index]
         let slot = vix_LLVMBuildGEP2(b.builder, element_ty, base, indices, 1, llvm_temp(b, "idx"))
-        return vix_LLVMBuildLoad2(b.builder, element_ty, slot, llvm_temp(b, "loadidx"))
+        let loaded = vix_LLVMBuildLoad2(b.builder, element_ty, slot, llvm_temp(b, "loadidx"))
+        return llvm_cast_value(b, loaded, element_ty_text, expected_ty)
     }
     if (expr.tag == "binop") { return codegen_binop_expr_value_typed(b, es, store, expr, expected_ty) }
     if (expr.tag == "unaryop") { return codegen_unary_expr_value_typed(b, es, store, expr) }

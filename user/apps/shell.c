@@ -643,6 +643,12 @@ void _start(uint64_t argc, char **argv, char **envp) {
       applets_ok = 0;
       write_str("[shell_test] pipeline FAIL\n");
     }
+    if (run_startup_command("printf 'skip\\nvix-grep-ok\\n' | grep vix-grep") == 0) {
+      write_str("[grep_test] PASS\n");
+    } else {
+      applets_ok = 0;
+      write_str("[grep_test] FAIL\n");
+    }
     if (run_startup_command("echo first > /work/output") == 0 &&
         run_startup_command("echo second >> /work/output") == 0 &&
         run_startup_command("cat < /work/output") == 0) {
