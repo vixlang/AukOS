@@ -14,11 +14,11 @@ runtime shim so their register ABI has one stable implementation.
 `/bin/vix_hello` is built as:
 
 ```text
-user/hello.vix
+user/apps/hello.vix
   -> vixc --target x86_64-unknown-none -obj
   -> build/user/hello.vix.o
-  +  user/entry.c
-  +  user/runtime.c
+  +  user/runtime/entry.c
+  +  user/runtime/runtime.c
   -> static build/user/language_hello.elf
 ```
 

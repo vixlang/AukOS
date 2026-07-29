@@ -29,3 +29,21 @@ current limits.
 ToyBox, the AukOS-specific Vixc snapshot, and NASM are vendored as ordinary
 source directories. They are not submodules. See `docs/third-party.md` for
 their upstream repositories, pinned commits, and licenses.
+
+## Source layout
+
+The native source tree is organized by subsystem:
+
+```text
+arch/x86_64/          x86_64 boot code, linker scripts, and arch-specific C
+kernel/core/          kernel entry points and core services
+kernel/mm/            memory and virtual-memory management
+kernel/fs/            VFS, filesystems, block layer, and ramdisk support
+kernel/net/            Ethernet, IP, UDP, and TCP networking
+kernel/drivers/       PCI, serial, input, VirtIO, and e1000 drivers
+user/apps/            user programs and Vix applications
+user/runtime/         user-space runtime and startup code
+user/tests/           user-space test programs
+tests/                host-side kernel and libc tests
+tools/                host utilities and smoke-test scripts
+```

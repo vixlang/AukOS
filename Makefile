@@ -38,7 +38,7 @@ USER_CLEAR_OBJ := $(USER_DIR)/clear.vix.o
 USER_PING_OBJ := $(USER_DIR)/ping.vix.o
 USER_TOUCH_OBJ := $(USER_DIR)/touch.vix.o
 VIX_RUNTIME_OBJECT := $(BUILD_DIR)/vix-runtime/runtime.o
-E1000_VIX_OBJECT := $(BUILD_DIR)/kernel/driver/e1000_vix.o
+E1000_VIX_OBJECT := $(BUILD_DIR)/kernel/drivers/e1000/e1000_vix.o
 VIX_RUNTIME_BLOB := $(BUILD_DIR)/user/runtime_reloc.o
 USER_ED_BLOB := $(BUILD_DIR)/user/ed.o
 USER_CLEAR_BLOB := $(BUILD_DIR)/user/clear.o
@@ -135,7 +135,7 @@ quiet_cmd_efi = EFI     $@
 quiet_cmd_objcopy = OBJCOPY $@
 
 CFLAGS := -target x86_64-unknown-none -std=c17 -ffreestanding -fno-stack-protector \
-	-fno-pic -mno-red-zone -Wall -Wextra -Werror -Ikernel/include
+	-fno-pic -mno-red-zone -Wall -Wextra -Werror -Ikernel -Ikernel/include
 USER_CFLAGS := -target x86_64-unknown-none -std=c17 -ffreestanding -fno-stack-protector \
 	-fno-pic -mcmodel=large -mno-red-zone -Wall -Wextra -Werror -Iuser/include
 ASFLAGS := -f elf64
@@ -144,7 +144,7 @@ LDFLAGS_UEFI := -nostdlib -static -z max-page-size=0x1000 -T arch/x86_64/linker_
 
 EFI_CFLAGS := -target x86_64-unknown-none -std=c17 -ffreestanding -fno-stack-protector \
 	-fpic -mno-red-zone -fshort-wchar -Wall -Wextra -Werror \
-	-I$(EFI_INCLUDE_DIR) -I$(EFI_ARCH_INCLUDE_DIR) -Ikernel/include \
+	-I$(EFI_INCLUDE_DIR) -I$(EFI_ARCH_INCLUDE_DIR) -Ikernel -Ikernel/include \
 	-DEFI_FUNCTION_WRAPPER
 EFI_LDFLAGS := -nostdlib -static -T $(EFI_LDS) \
 	$(EFI_CRT0) -L$(EFI_LIB_DIR) -lefi -lgnuefi
@@ -154,42 +154,42 @@ KERNEL_OBJS := \
 	$(BUILD_DIR)/arch/x86_64/interrupt_stubs.o \
 	$(BUILD_DIR)/arch/x86_64/syscall_entry.o \
 	$(BUILD_DIR)/arch/x86_64/user_entry.o \
-	$(BUILD_DIR)/kernel/block.o \
-	$(BUILD_DIR)/kernel/console.o \
-	$(BUILD_DIR)/kernel/descriptor.o \
-	$(BUILD_DIR)/kernel/driver/e1000_shim.o \
+	$(BUILD_DIR)/kernel/fs/block.o \
+	$(BUILD_DIR)/kernel/core/console.o \
+	$(BUILD_DIR)/kernel/core/descriptor.o \
+	$(BUILD_DIR)/kernel/drivers/e1000/e1000_shim.o \
 	$(E1000_VIX_OBJECT) \
-	$(BUILD_DIR)/kernel/elf.o \
-	$(BUILD_DIR)/kernel/ethernet.o \
-	$(BUILD_DIR)/kernel/ext4.o \
-	$(BUILD_DIR)/kernel/fat32.o \
-	$(BUILD_DIR)/kernel/gdt.o \
-	$(BUILD_DIR)/kernel/idt.o \
-	$(BUILD_DIR)/kernel/keyboard.o \
-	$(BUILD_DIR)/kernel/log.o \
-	$(BUILD_DIR)/kernel/memory.o \
-	$(BUILD_DIR)/kernel/multiboot2.o \
-	$(BUILD_DIR)/kernel/net.o \
-	$(BUILD_DIR)/kernel/net_packets.o \
-	$(BUILD_DIR)/kernel/panic.o \
-	$(BUILD_DIR)/kernel/pci.o \
-	$(BUILD_DIR)/kernel/pipe.o \
-	$(BUILD_DIR)/kernel/ramdisk.o \
-	$(BUILD_DIR)/kernel/main.o \
-	$(BUILD_DIR)/kernel/scheduler.o \
-	$(BUILD_DIR)/kernel/serial.o \
-	$(BUILD_DIR)/kernel/syscall.o \
-	$(BUILD_DIR)/kernel/task.o \
-	$(BUILD_DIR)/kernel/tcp_socket.o \
-	$(BUILD_DIR)/kernel/timer.o \
-	$(BUILD_DIR)/kernel/user.o \
-	$(BUILD_DIR)/kernel/vfs.o \
-	$(BUILD_DIR)/kernel/tmpfs.o \
-	$(BUILD_DIR)/kernel/udp_socket.o \
-	$(BUILD_DIR)/kernel/vmm.o \
-	$(BUILD_DIR)/kernel/vmm_stack.o \
-	$(BUILD_DIR)/kernel/virtio_blk.o \
-	$(BUILD_DIR)/kernel/virtio_net.o \
+	$(BUILD_DIR)/kernel/core/elf.o \
+	$(BUILD_DIR)/kernel/net/ethernet.o \
+	$(BUILD_DIR)/kernel/fs/ext4.o \
+	$(BUILD_DIR)/kernel/fs/fat32.o \
+	$(BUILD_DIR)/arch/x86_64/kernel/gdt.o \
+	$(BUILD_DIR)/arch/x86_64/kernel/idt.o \
+	$(BUILD_DIR)/kernel/drivers/input/keyboard.o \
+	$(BUILD_DIR)/kernel/core/log.o \
+	$(BUILD_DIR)/kernel/mm/memory.o \
+	$(BUILD_DIR)/kernel/core/multiboot2.o \
+	$(BUILD_DIR)/kernel/net/net.o \
+	$(BUILD_DIR)/kernel/net/net_packets.o \
+	$(BUILD_DIR)/kernel/core/panic.o \
+	$(BUILD_DIR)/kernel/drivers/pci/pci.o \
+	$(BUILD_DIR)/kernel/core/pipe.o \
+	$(BUILD_DIR)/kernel/core/ramdisk.o \
+	$(BUILD_DIR)/kernel/core/main.o \
+	$(BUILD_DIR)/kernel/core/scheduler.o \
+	$(BUILD_DIR)/kernel/drivers/serial/serial.o \
+	$(BUILD_DIR)/kernel/core/syscall.o \
+	$(BUILD_DIR)/kernel/core/task.o \
+	$(BUILD_DIR)/kernel/net/tcp_socket.o \
+	$(BUILD_DIR)/kernel/core/timer.o \
+	$(BUILD_DIR)/kernel/core/user.o \
+	$(BUILD_DIR)/kernel/fs/vfs.o \
+	$(BUILD_DIR)/kernel/fs/tmpfs.o \
+	$(BUILD_DIR)/kernel/net/udp_socket.o \
+	$(BUILD_DIR)/kernel/mm/vmm.o \
+	$(BUILD_DIR)/kernel/mm/vmm_stack.o \
+	$(BUILD_DIR)/kernel/drivers/virtio/virtio_blk.o \
+	$(BUILD_DIR)/kernel/drivers/virtio/virtio_net.o \
 	$(BUILD_DIR)/user/hello.o \
 	$(BUILD_DIR)/user/aush.o \
 	$(BUILD_DIR)/user/write_test.o \
@@ -220,42 +220,42 @@ KERNEL_UEFI_OBJS := \
 	$(BUILD_DIR)/arch/x86_64/interrupt_stubs.o \
 	$(BUILD_DIR)/arch/x86_64/syscall_entry.o \
 	$(BUILD_DIR)/arch/x86_64/user_entry.o \
-	$(BUILD_DIR)/kernel/block.o \
-	$(BUILD_DIR)/kernel/console.o \
-	$(BUILD_DIR)/kernel/descriptor.o \
-	$(BUILD_DIR)/kernel/driver/e1000_shim.o \
+	$(BUILD_DIR)/kernel/fs/block.o \
+	$(BUILD_DIR)/kernel/core/console.o \
+	$(BUILD_DIR)/kernel/core/descriptor.o \
+	$(BUILD_DIR)/kernel/drivers/e1000/e1000_shim.o \
 	$(E1000_VIX_OBJECT) \
-	$(BUILD_DIR)/kernel/elf.o \
-	$(BUILD_DIR)/kernel/ethernet.o \
-	$(BUILD_DIR)/kernel/ext4.o \
-	$(BUILD_DIR)/kernel/fat32.o \
-	$(BUILD_DIR)/kernel/gdt.o \
-	$(BUILD_DIR)/kernel/idt.o \
-	$(BUILD_DIR)/kernel/keyboard.o \
-	$(BUILD_DIR)/kernel/log.o \
-	$(BUILD_DIR)/kernel/memory.o \
-	$(BUILD_DIR)/kernel/net.o \
-	$(BUILD_DIR)/kernel/net_packets.o \
-	$(BUILD_DIR)/kernel/uefi_memory.o \
-	$(BUILD_DIR)/kernel/panic.o \
-	$(BUILD_DIR)/kernel/pci.o \
-	$(BUILD_DIR)/kernel/pipe.o \
-	$(BUILD_DIR)/kernel/ramdisk.o \
-	$(BUILD_DIR)/kernel/main_uefi.o \
-	$(BUILD_DIR)/kernel/scheduler.o \
-	$(BUILD_DIR)/kernel/serial.o \
-	$(BUILD_DIR)/kernel/syscall.o \
-	$(BUILD_DIR)/kernel/task.o \
-	$(BUILD_DIR)/kernel/tcp_socket.o \
-	$(BUILD_DIR)/kernel/timer.o \
-	$(BUILD_DIR)/kernel/user.o \
-	$(BUILD_DIR)/kernel/vfs.o \
-	$(BUILD_DIR)/kernel/tmpfs.o \
-	$(BUILD_DIR)/kernel/udp_socket.o \
-	$(BUILD_DIR)/kernel/vmm.o \
-	$(BUILD_DIR)/kernel/vmm_stack.o \
-	$(BUILD_DIR)/kernel/virtio_blk.o \
-	$(BUILD_DIR)/kernel/virtio_net.o \
+	$(BUILD_DIR)/kernel/core/elf.o \
+	$(BUILD_DIR)/kernel/net/ethernet.o \
+	$(BUILD_DIR)/kernel/fs/ext4.o \
+	$(BUILD_DIR)/kernel/fs/fat32.o \
+	$(BUILD_DIR)/arch/x86_64/kernel/gdt.o \
+	$(BUILD_DIR)/arch/x86_64/kernel/idt.o \
+	$(BUILD_DIR)/kernel/drivers/input/keyboard.o \
+	$(BUILD_DIR)/kernel/core/log.o \
+	$(BUILD_DIR)/kernel/mm/memory.o \
+	$(BUILD_DIR)/kernel/net/net.o \
+	$(BUILD_DIR)/kernel/net/net_packets.o \
+	$(BUILD_DIR)/kernel/mm/uefi_memory.o \
+	$(BUILD_DIR)/kernel/core/panic.o \
+	$(BUILD_DIR)/kernel/drivers/pci/pci.o \
+	$(BUILD_DIR)/kernel/core/pipe.o \
+	$(BUILD_DIR)/kernel/core/ramdisk.o \
+	$(BUILD_DIR)/kernel/core/main_uefi.o \
+	$(BUILD_DIR)/kernel/core/scheduler.o \
+	$(BUILD_DIR)/kernel/drivers/serial/serial.o \
+	$(BUILD_DIR)/kernel/core/syscall.o \
+	$(BUILD_DIR)/kernel/core/task.o \
+	$(BUILD_DIR)/kernel/net/tcp_socket.o \
+	$(BUILD_DIR)/kernel/core/timer.o \
+	$(BUILD_DIR)/kernel/core/user.o \
+	$(BUILD_DIR)/kernel/fs/vfs.o \
+	$(BUILD_DIR)/kernel/fs/tmpfs.o \
+	$(BUILD_DIR)/kernel/net/udp_socket.o \
+	$(BUILD_DIR)/kernel/mm/vmm.o \
+	$(BUILD_DIR)/kernel/mm/vmm_stack.o \
+	$(BUILD_DIR)/kernel/drivers/virtio/virtio_blk.o \
+	$(BUILD_DIR)/kernel/drivers/virtio/virtio_net.o \
 	$(BUILD_DIR)/user/hello.o \
 	$(BUILD_DIR)/user/aush.o \
 	$(BUILD_DIR)/user/write_test.o \
@@ -550,7 +550,7 @@ $(USER_DIR)/hello.elf: $(USER_DIR)/hello_entry.o user/linker.ld
 	$(Q)printf '%s\n' '$(quiet_cmd_userld)'
 	$(Q)$(LD) -nostdlib -static -T user/linker.ld -o $@ $(USER_DIR)/hello_entry.o
 
-$(USER_DIR)/hello_entry.o: user/hello.c
+$(USER_DIR)/hello_entry.o: user/apps/hello.c
 	$(Q)printf '%s\n' '$(quiet_cmd_usercc)'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)$(CC) $(USER_CFLAGS) -c $< -o $@
@@ -559,12 +559,12 @@ $(USER_DIR)/aush.elf: $(USER_DIR)/aush_entry.o $(USER_AUSH_PARSE_OBJ) user/linke
 	$(Q)printf '%s\n' '$(quiet_cmd_userld)'
 	$(Q)$(LD) -nostdlib -static -T user/linker.ld -o $@ $(USER_DIR)/aush_entry.o $(USER_AUSH_PARSE_OBJ)
 
-$(USER_DIR)/aush_entry.o: user/shell.c user/include/aukos/shell_parse.h
+$(USER_DIR)/aush_entry.o: user/apps/shell.c user/include/aukos/shell_parse.h
 	$(Q)printf '%s\n' '$(quiet_cmd_usercc)'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)$(CC) $(USER_CFLAGS) -c $< -o $@
 
-$(USER_AUSH_PARSE_OBJ): user/shell_parse.c user/include/aukos/shell_parse.h
+$(USER_AUSH_PARSE_OBJ): user/apps/shell_parse.c user/include/aukos/shell_parse.h
 	$(Q)printf '%s\n' '$(quiet_cmd_usercc)'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)$(CC) $(USER_CFLAGS) -c $< -o $@
@@ -573,7 +573,7 @@ $(USER_DIR)/write_test.elf: $(USER_DIR)/write_test_entry.o user/linker.ld
 	$(Q)printf '%s\n' '$(quiet_cmd_userld)'
 	$(Q)$(LD) -nostdlib -static -T user/linker.ld -o $@ $(USER_DIR)/write_test_entry.o
 
-$(USER_DIR)/write_test_entry.o: user/write_test.c
+$(USER_DIR)/write_test_entry.o: user/tests/write_test.c
 	$(Q)printf '%s\n' '$(quiet_cmd_usercc)'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)$(CC) $(USER_CFLAGS) -c $< -o $@
@@ -582,7 +582,7 @@ $(USER_SIGNAL_TEST): $(USER_DIR)/signal_test_entry.o $(SIGNAL_TEST_LIBC_OBJ) use
 	$(Q)printf '%s\n' '$(quiet_cmd_userld)'
 	$(Q)$(LD) -nostdlib -static -T user/linker.ld -o $@ $(USER_DIR)/signal_test_entry.o $(SIGNAL_TEST_LIBC_OBJ)
 
-$(USER_DIR)/signal_test_entry.o: user/signal_test.c
+$(USER_DIR)/signal_test_entry.o: user/tests/signal_test.c
 	$(Q)printf '%s\n' '$(quiet_cmd_usercc)'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)$(CC) $(USER_CFLAGS) -c $< -o $@
@@ -592,7 +592,7 @@ $(USER_UDP_TEST): $(USER_DIR)/udp_test_entry.o $(TOYBOX_LIBC_OBJS) user/linker.l
 	$(Q)$(LD) -nostdlib -static -T user/linker.ld -o $@ \
 		$(USER_DIR)/udp_test_entry.o $(TOYBOX_LIBC_OBJS)
 
-$(USER_DIR)/udp_test_entry.o: user/udp_test.c
+$(USER_DIR)/udp_test_entry.o: user/tests/udp_test.c
 	$(Q)printf '%s\n' '$(quiet_cmd_usercc)'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)$(CC) $(USER_CFLAGS) -c $< -o $@
@@ -720,7 +720,7 @@ $(USER_VIXC_TEST): $(USER_DIR)/vixc_test_entry.o $(TOYBOX_LIBC_OBJS) user/linker
 	$(Q)$(LD) -nostdlib -static -T user/linker.ld -o $@ \
 		$(USER_DIR)/vixc_test_entry.o $(TOYBOX_LIBC_OBJS)
 
-$(USER_DIR)/vixc_test_entry.o: user/vixc_test.c
+$(USER_DIR)/vixc_test_entry.o: user/tests/vixc_test.c
 	$(Q)printf '%s\n' '$(quiet_cmd_usercc)'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)$(CC) $(USER_CFLAGS) -c $< -o $@
@@ -735,12 +735,12 @@ $(USER_NASM_TEST): $(USER_DIR)/nasm_test_entry.o $(TOYBOX_LIBC_OBJS) user/linker
 	$(Q)$(LD) -nostdlib -static -T user/linker.ld -o $@ \
 		$(USER_DIR)/nasm_test_entry.o $(TOYBOX_LIBC_OBJS)
 
-$(USER_DIR)/persistence_test_entry.o: user/persistence_test.c
+$(USER_DIR)/persistence_test_entry.o: user/tests/persistence_test.c
 	$(Q)printf '%s\n' '$(quiet_cmd_usercc)'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)$(CC) $(USER_CFLAGS) -c $< -o $@
 
-$(USER_DIR)/nasm_test_entry.o: user/nasm_test.c
+$(USER_DIR)/nasm_test_entry.o: user/tests/nasm_test.c
 	$(Q)printf '%s\n' '$(quiet_cmd_usercc)'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)$(CC) $(USER_CFLAGS) -c $< -o $@
@@ -752,74 +752,74 @@ $(VIX_RUNTIME_OBJECT): $(USER_DIR)/entry.o $(USER_DIR)/runtime.o \
 	$(Q)$(LD) -r -o $@ $(USER_DIR)/entry.o $(USER_DIR)/runtime.o \
 		$(VIXC_LANGUAGE_RUNTIME_OBJECT) $(VIX_RUNTIME_LIBC_OBJS)
 
-$(USER_VIX_HELLO_OBJ): user/hello.vix $(VIXC_GATE)
+$(USER_VIX_HELLO_OBJ): user/apps/hello.vix $(VIXC_GATE)
 	@command -v $(VIXC) >/dev/null || { echo "error: host Vix compiler not found: $(VIXC)"; exit 1; }
 	$(Q)printf '%s\n' 'VIXC    $@'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)ulimit -s 65536 && $(VIXC) --target $(VIX_TARGET) -obj $< -o $@
 
-$(USER_ED_OBJ): user/ed.vix $(VIXC_GATE)
+$(USER_ED_OBJ): user/apps/ed.vix $(VIXC_GATE)
 	$(Q)printf '%s\n' 'VIXC    $@'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)ulimit -s 65536 && $(VIXC) --target $(VIX_TARGET) -obj $< -o $@
 
-$(USER_CLEAR_OBJ): user/clear.vix $(VIXC_GATE)
+$(USER_CLEAR_OBJ): user/apps/clear.vix $(VIXC_GATE)
 	$(Q)printf '%s\n' 'VIXC    $@'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)ulimit -s 65536 && $(VIXC) --target $(VIX_TARGET) -obj $< -o $@
 
-$(USER_TOUCH_OBJ): user/touch.vix $(VIXC_GATE)
+$(USER_TOUCH_OBJ): user/apps/touch.vix $(VIXC_GATE)
 	$(Q)printf '%s\n' 'VIXC    $@'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)ulimit -s 65536 && $(VIXC) --target $(VIX_TARGET) -obj $< -o $@
 
-$(USER_PING_OBJ): user/ping.vix $(VIXC_GATE)
+$(USER_PING_OBJ): user/apps/ping.vix $(VIXC_GATE)
 	$(Q)printf '%s\n' 'VIXC    $@'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)ulimit -s 65536 && $(VIXC) --target $(VIX_TARGET) -obj $< -o $@
 
-$(E1000_VIX_OBJECT): kernel/driver/e1000.vix $(VIXC_GATE)
+$(E1000_VIX_OBJECT): kernel/drivers/e1000/e1000.vix $(VIXC_GATE)
 	@command -v $(VIXC) >/dev/null || { echo "error: host Vix compiler not found: $(VIXC)"; exit 1; }
 	$(Q)printf '%s\n' 'VIXC    $@'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)ulimit -s 65536 && $(VIXC) --target $(VIX_TARGET) -obj $< -o $@
 
-$(USER_DIR)/dev_memory_test_entry.o: user/dev_memory_test.c
+$(USER_DIR)/dev_memory_test_entry.o: user/tests/dev_memory_test.c
 	$(Q)printf '%s\n' '$(quiet_cmd_usercc)'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)$(CC) $(USER_CFLAGS) -c $< -o $@
 
-$(USER_DIR)/pipe_test_entry.o: user/pipe_test.c
+$(USER_DIR)/pipe_test_entry.o: user/tests/pipe_test.c
 	$(Q)printf '%s\n' '$(quiet_cmd_usercc)'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)$(CC) $(USER_CFLAGS) -c $< -o $@
 
-$(USER_DIR)/process_env_test_entry.o: user/process_env_test.c
+$(USER_DIR)/process_env_test_entry.o: user/tests/process_env_test.c
 	$(Q)printf '%s\n' '$(quiet_cmd_usercc)'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)$(CC) $(USER_CFLAGS) -c $< -o $@
 
-$(USER_DIR)/process_stack_test_entry.o: user/process_stack_test.c
+$(USER_DIR)/process_stack_test_entry.o: user/tests/process_stack_test.c
 	$(Q)printf '%s\n' '$(quiet_cmd_usercc)'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)$(CC) $(USER_CFLAGS) -c $< -o $@
 
-$(USER_DIR)/file_api_test_entry.o: user/file_api_test.c
+$(USER_DIR)/file_api_test_entry.o: user/tests/file_api_test.c
 	$(Q)printf '%s\n' '$(quiet_cmd_usercc)'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)$(CC) $(USER_CFLAGS) -c $< -o $@
 
-$(USER_DIR)/entry.o: user/entry.c user/include/aukos/runtime.h
+$(USER_DIR)/entry.o: user/runtime/entry.c user/include/aukos/runtime.h
 	$(Q)printf '%s\n' '$(quiet_cmd_usercc)'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)$(CC) $(USER_CFLAGS) -c $< -o $@
 
-$(USER_DIR)/runtime.o: user/runtime.c user/include/aukos/runtime.h
+$(USER_DIR)/runtime.o: user/runtime/runtime.c user/include/aukos/runtime.h
 	$(Q)printf '%s\n' '$(quiet_cmd_usercc)'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)$(CC) $(USER_CFLAGS) -c $< -o $@
 
-$(USER_DIR)/runtime_test_entry.o: user/runtime_test.c \
+$(USER_DIR)/runtime_test_entry.o: user/tests/runtime_test.c \
 		user/include/aukos/runtime.h
 	$(Q)printf '%s\n' '$(quiet_cmd_usercc)'
 	$(Q)mkdir -p $(dir $@)
@@ -943,12 +943,12 @@ $(UDP_ECHO_SERVER): tools/udp_echo_server.c
 	$(Q)mkdir -p $(dir $@)
 	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror $< -o $@
 
-$(UDP_PCAP_CHECK): tools/check_udp_pcap.c kernel/net_packets.c \
+$(UDP_PCAP_CHECK): tools/check_udp_pcap.c kernel/net/net_packets.c \
 		kernel/include/aukos/net_packets.h
 	$(Q)printf '%s\n' 'HOSTCC  $@'
 	$(Q)mkdir -p $(dir $@)
-	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel/include \
-		tools/check_udp_pcap.c kernel/net_packets.c -o $@
+	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel -Ikernel/include \
+		tools/check_udp_pcap.c kernel/net/net_packets.c -o $@
 
 $(VIRTIO_DISK): $(VIRTIO_FIXTURE_GEN)
 	$(Q)printf '%s\n' 'FIXTURE $@'
@@ -977,87 +977,87 @@ $(BUILD_DIR)/%.o: %.asm
 $(HOST_TEST_DIR)/%: tests/%.c
 	$(Q)printf '%s\n' '$(quiet_cmd_hostcc)'
 	$(Q)mkdir -p $(dir $@)
-	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel/include $< -o $@
+	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel -Ikernel/include $< -o $@
 
-$(HOST_TEST_DIR)/virtio_net_test: tests/virtio_net_test.c kernel/net_packets.c \
+$(HOST_TEST_DIR)/virtio_net_test: tests/virtio_net_test.c kernel/net/net_packets.c \
 		kernel/include/aukos/net_packets.h kernel/include/aukos/virtio_net.h
 	$(Q)printf '%s\n' '$(quiet_cmd_hostcc)'
 	$(Q)mkdir -p $(dir $@)
-	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel/include \
-		tests/virtio_net_test.c kernel/net_packets.c -o $@
+	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel -Ikernel/include \
+		tests/virtio_net_test.c kernel/net/net_packets.c -o $@
 
-$(HOST_TEST_DIR)/block_test: tests/block_test.c kernel/block.c \
+$(HOST_TEST_DIR)/block_test: tests/block_test.c kernel/fs/block.c \
 		kernel/include/aukos/block.h
 	$(Q)printf '%s\n' '$(quiet_cmd_hostcc)'
 	$(Q)mkdir -p $(dir $@)
-	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel/include \
-		tests/block_test.c kernel/block.c -o $@
+	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel -Ikernel/include \
+		tests/block_test.c kernel/fs/block.c -o $@
 
-$(HOST_TEST_DIR)/ext4_write_test: tests/ext4_write_test.c kernel/block.c \
-		kernel/vfs.c kernel/ext4.c kernel/include/aukos/ext4.h
+$(HOST_TEST_DIR)/ext4_write_test: tests/ext4_write_test.c kernel/fs/block.c \
+		kernel/fs/vfs.c kernel/fs/ext4.c kernel/include/aukos/ext4.h
 	$(Q)printf '%s\n' '$(quiet_cmd_hostcc)'
 	$(Q)mkdir -p $(dir $@)
-	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel/include \
-		-DAUKOS_HOST_TEST tests/ext4_write_test.c kernel/block.c \
-		kernel/vfs.c kernel/ext4.c -o $@
+	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel -Ikernel/include \
+		-DAUKOS_HOST_TEST tests/ext4_write_test.c kernel/fs/block.c \
+		kernel/fs/vfs.c kernel/fs/ext4.c -o $@
 
-$(HOST_TEST_DIR)/udp_packet_test: tests/udp_packet_test.c kernel/net_packets.c \
+$(HOST_TEST_DIR)/udp_packet_test: tests/udp_packet_test.c kernel/net/net_packets.c \
 		kernel/include/aukos/net_packets.h
 	$(Q)printf '%s\n' '$(quiet_cmd_hostcc)'
 	$(Q)mkdir -p $(dir $@)
-	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel/include \
-		tests/udp_packet_test.c kernel/net_packets.c -o $@
+	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel -Ikernel/include \
+		tests/udp_packet_test.c kernel/net/net_packets.c -o $@
 
-$(HOST_TEST_DIR)/descriptor_test: tests/descriptor_test.c kernel/descriptor.c \
-		kernel/pipe.c kernel/include/aukos/descriptor.h kernel/include/aukos/pipe.h
+$(HOST_TEST_DIR)/descriptor_test: tests/descriptor_test.c kernel/core/descriptor.c \
+		kernel/core/pipe.c kernel/include/aukos/descriptor.h kernel/include/aukos/pipe.h
 	$(Q)printf '%s\n' '$(quiet_cmd_hostcc)'
 	$(Q)mkdir -p $(dir $@)
-	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel/include \
-		tests/descriptor_test.c kernel/descriptor.c kernel/pipe.c -o $@
+	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel -Ikernel/include \
+		tests/descriptor_test.c kernel/core/descriptor.c kernel/core/pipe.c -o $@
 
-$(HOST_TEST_DIR)/pipe_test: tests/pipe_test.c kernel/pipe.c \
+$(HOST_TEST_DIR)/pipe_test: tests/pipe_test.c kernel/core/pipe.c \
 		kernel/include/aukos/pipe.h
 	$(Q)printf '%s\n' '$(quiet_cmd_hostcc)'
 	$(Q)mkdir -p $(dir $@)
-	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel/include \
-		tests/pipe_test.c kernel/pipe.c -o $@
+	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel -Ikernel/include \
+		tests/pipe_test.c kernel/core/pipe.c -o $@
 
-$(HOST_TEST_DIR)/scheduler_test: tests/scheduler_test.c kernel/scheduler.c \
-		kernel/pipe.c kernel/include/aukos/scheduler.h kernel/include/aukos/pipe.h
+$(HOST_TEST_DIR)/scheduler_test: tests/scheduler_test.c kernel/core/scheduler.c \
+		kernel/core/pipe.c kernel/include/aukos/scheduler.h kernel/include/aukos/pipe.h
 	$(Q)printf '%s\n' '$(quiet_cmd_hostcc)'
 	$(Q)mkdir -p $(dir $@)
-	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel/include \
-		tests/scheduler_test.c kernel/scheduler.c kernel/pipe.c -o $@
+	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel -Ikernel/include \
+		tests/scheduler_test.c kernel/core/scheduler.c kernel/core/pipe.c -o $@
 
-$(HOST_TEST_DIR)/vmm_stack_test: tests/vmm_stack_test.c kernel/vmm_stack.c \
+$(HOST_TEST_DIR)/vmm_stack_test: tests/vmm_stack_test.c kernel/mm/vmm_stack.c \
 		kernel/include/aukos/vmm.h
 	$(Q)printf '%s\n' '$(quiet_cmd_hostcc)'
 	$(Q)mkdir -p $(dir $@)
-	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel/include \
-		tests/vmm_stack_test.c kernel/vmm_stack.c -o $@
+	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel -Ikernel/include \
+		tests/vmm_stack_test.c kernel/mm/vmm_stack.c -o $@
 
-$(HOST_TEST_DIR)/task_lifecycle_test: tests/task_lifecycle_test.c kernel/task.c \
+$(HOST_TEST_DIR)/task_lifecycle_test: tests/task_lifecycle_test.c kernel/core/task.c \
 		kernel/include/aukos/task.h
 	$(Q)printf '%s\n' '$(quiet_cmd_hostcc)'
 	$(Q)mkdir -p $(dir $@)
-	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel/include \
-		tests/task_lifecycle_test.c kernel/task.c -o $@
+	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel -Ikernel/include \
+		tests/task_lifecycle_test.c kernel/core/task.c -o $@
 
-$(HOST_TEST_DIR)/path_test: tests/path_test.c kernel/vfs.c \
+$(HOST_TEST_DIR)/path_test: tests/path_test.c kernel/fs/vfs.c \
 		kernel/include/aukos/vfs.h
 	$(Q)printf '%s\n' '$(quiet_cmd_hostcc)'
 	$(Q)mkdir -p $(dir $@)
-	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel/include \
-		tests/path_test.c kernel/vfs.c -o $@
+	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel -Ikernel/include \
+		tests/path_test.c kernel/fs/vfs.c -o $@
 
 $(HOST_TEST_DIR)/tmpfs_ownership_test: tests/tmpfs_ownership_test.c \
-		kernel/vfs.c kernel/tmpfs.c kernel/include/aukos/vfs.h \
+		kernel/fs/vfs.c kernel/fs/tmpfs.c kernel/include/aukos/vfs.h \
 		kernel/include/aukos/tmpfs.h
 	$(Q)printf '%s\n' '$(quiet_cmd_hostcc)'
 	$(Q)mkdir -p $(dir $@)
-	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel/include \
-		-DAUKOS_HOST_TEST tests/tmpfs_ownership_test.c kernel/vfs.c \
-		kernel/tmpfs.c -o $@
+	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel -Ikernel/include \
+		-DAUKOS_HOST_TEST tests/tmpfs_ownership_test.c kernel/fs/vfs.c \
+		kernel/fs/tmpfs.c -o $@
 
 $(HOST_TEST_DIR)/mkstemp_test: tests/mkstemp_test.c user/libc/mkstemp.c
 	$(Q)printf '%s\n' '$(quiet_cmd_hostcc)'
@@ -1065,13 +1065,13 @@ $(HOST_TEST_DIR)/mkstemp_test: tests/mkstemp_test.c user/libc/mkstemp.c
 	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Iuser/include \
 		-DAUKOS_MKSTEMP_TEST tests/mkstemp_test.c user/libc/mkstemp.c -o $@
 
-$(HOST_TEST_DIR)/elf_reader_test: tests/elf_reader_test.c kernel/elf.c \
-		kernel/vfs.c kernel/tmpfs.c $(USER_HELLO)
+$(HOST_TEST_DIR)/elf_reader_test: tests/elf_reader_test.c kernel/core/elf.c \
+		kernel/fs/vfs.c kernel/fs/tmpfs.c $(USER_HELLO)
 	$(Q)printf '%s\n' '$(quiet_cmd_hostcc)'
 	$(Q)mkdir -p $(dir $@)
-	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel/include \
-		-DAUKOS_HOST_TEST tests/elf_reader_test.c kernel/elf.c kernel/vfs.c \
-		kernel/tmpfs.c -o $@
+	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel -Ikernel/include \
+		-DAUKOS_HOST_TEST tests/elf_reader_test.c kernel/core/elf.c kernel/fs/vfs.c \
+		kernel/fs/tmpfs.c -o $@
 
 $(HOST_TEST_DIR)/environment_test: tests/environment_test.c \
 		user/libc/environment.c user/include/stdlib.h user/include/unistd.h
@@ -1081,33 +1081,33 @@ $(HOST_TEST_DIR)/environment_test: tests/environment_test.c \
 		-DAUKOS_ENV_TEST_ALLOCATORS \
 		tests/environment_test.c user/libc/environment.c -o $@
 
-$(HOST_TEST_DIR)/udp_socket_test: tests/udp_socket_test.c kernel/udp_socket.c \
+$(HOST_TEST_DIR)/udp_socket_test: tests/udp_socket_test.c kernel/net/udp_socket.c \
 		kernel/include/aukos/udp_socket.h
 	$(Q)printf '%s\n' '$(quiet_cmd_hostcc)'
 	$(Q)mkdir -p $(dir $@)
-	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel/include \
-		tests/udp_socket_test.c kernel/udp_socket.c -o $@
+	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel -Ikernel/include \
+		tests/udp_socket_test.c kernel/net/udp_socket.c -o $@
 
-$(HOST_TEST_DIR)/tcp_packet_test: tests/tcp_packet_test.c kernel/net_packets.c \
+$(HOST_TEST_DIR)/tcp_packet_test: tests/tcp_packet_test.c kernel/net/net_packets.c \
 		kernel/include/aukos/net_packets.h
 	$(call cmd,hostcc)
 	$(Q)mkdir -p $(dir $@)
-	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel/include \
-		tests/tcp_packet_test.c kernel/net_packets.c -o $@
+	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel -Ikernel/include \
+		tests/tcp_packet_test.c kernel/net/net_packets.c -o $@
 
-$(HOST_TEST_DIR)/tcp_socket_test: tests/tcp_socket_test.c kernel/tcp_socket.c \
+$(HOST_TEST_DIR)/tcp_socket_test: tests/tcp_socket_test.c kernel/net/tcp_socket.c \
 		kernel/include/aukos/tcp_socket.h
 	$(call cmd,hostcc)
 	$(Q)mkdir -p $(dir $@)
-	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel/include \
-		tests/tcp_socket_test.c kernel/tcp_socket.c -o $@
+	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel -Ikernel/include \
+		tests/tcp_socket_test.c kernel/net/tcp_socket.c -o $@
 
-$(HOST_TEST_DIR)/shell_parse_test: tests/shell_parse_test.c user/shell_parse.c \
+$(HOST_TEST_DIR)/shell_parse_test: tests/shell_parse_test.c user/apps/shell_parse.c \
 		user/include/aukos/shell_parse.h
 	$(Q)printf '%s\n' '$(quiet_cmd_hostcc)'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Iuser/include \
-		tests/shell_parse_test.c user/shell_parse.c -o $@
+		tests/shell_parse_test.c user/apps/shell_parse.c -o $@
 
 $(HOST_TEST_DIR)/libgen_test: tests/libgen_test.c user/libc/libgen.c user/include/libgen.h
 	$(Q)printf '%s\n' '$(quiet_cmd_hostcc)'

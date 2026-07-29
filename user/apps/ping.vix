@@ -5,6 +5,9 @@ extern "C"
     fn aukos_vix_icmp_echo(address: string, sequence: i32): i64
 }
 
+
+
+
 fn parse_ipv4(text: string): string
 {
     let address = malloc(4)
@@ -35,6 +38,7 @@ fn parse_ipv4(text: string): string
     if (index != text.length) { return nil }
     return address
 }
+
 
 fn print_usage()
 {

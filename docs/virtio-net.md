@@ -3,7 +3,7 @@
 ## 驱动边界
 
 AukOS 支持 QEMU transitional virtio-net PCI 设备 `1af4:1000` 的 legacy
-I/O transport。`kernel/virtio_net.c` 只负责 transport、DMA、queue 和同步
+I/O transport。`kernel/drivers/virtio/virtio_net.c` 只负责 transport、DMA、queue 和同步
 Ethernet frame API：
 
 - `virtio_net_is_ready()` / `virtio_net_get_mac()` 查询可用性与设备 MAC
@@ -23,7 +23,7 @@ mergeable RX buffers 或 checksum/GSO offload。
 
 ## 固定测试网络层
 
-`kernel/net.c` 在公开 Ethernet API 上执行启动 self-test，使用 Makefile 固定的
+`kernel/net/net.c` 在公开 Ethernet API 上执行启动 self-test，使用 Makefile 固定的
 QEMU user networking 拓扑：
 
 ```text
@@ -46,7 +46,7 @@ payload。所有等待均为 polling 且有固定 spin 和 packet 上限。
 请求使用 20-byte IPv4 header、TTL 64、DF、固定非零 identification，以及 ICMP
 identifier `0xa905`、sequence 1 和 payload `AukOS ICMP echo`。IPv4 `total_length`
 不含 Ethernet header/padding；ICMP checksum 也不覆盖 padding。网络字节序和
-one's-complement checksum helper 位于 `kernel/net_packets.c`，可直接用于 host test；
+one's-complement checksum helper 位于 `kernel/net/net_packets.c`，可直接用于 host test；
 奇数长度最后一个 byte 按高 8 bit 求和。
 
 只有 ARP cache 学习、ICMP TX completion 和完整的真实 RX echo reply 校验都成功后，
@@ -63,7 +63,7 @@ net: gateway ARP/IPv4/ICMP self-test passed
 
 ## 最小 UDP datagram socket
 
-`kernel/net_packets.c` 在同一 IPv4/checksum 边界实现 Ethernet + IPv4 + UDP builder
+`kernel/net/net_packets.c` 在同一 IPv4/checksum 边界实现 Ethernet + IPv4 + UDP builder
 和 parser。UDP pseudo-header checksum 覆盖奇数 payload；计算值为零时发送
 `0xffff`。接收端按 IPv4 语义接受 checksum 字段 0，非零字段必须严格通过 pseudo-
 header checksum。Ethernet padding 不计入 IP/UDP length 或 checksum。

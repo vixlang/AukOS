@@ -1,7 +1,7 @@
 # Port: curl — HTTP/HTTPS/FTP client
 # NOTE: Requires TCP stack in kernel. AukOS currently has UDP only,
 #       so this port is a framework placeholder until SOCK_STREAM
-#       is implemented in kernel/syscall.c.
+#       is implemented in kernel/core/syscall.c.
 ROOT := ../..
 SOURCE := $(ROOT)/user/curl
 PORT := $(ROOT)/ports/curl
