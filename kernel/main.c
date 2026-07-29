@@ -29,19 +29,30 @@
 void kernel_main(uint32_t multiboot_magic, uintptr_t multiboot_info)
 {
     struct memory_map memory_map;
+    struct boot_framebuffer framebuffer;
+    int framebuffer_available;
     void *page;
     void *heap_object;
     void *tss_stack;
 
     serial_init();
-    console_init();
+    framebuffer_available = multiboot2_read_framebuffer(
+        multiboot_magic, multiboot_info, &framebuffer);
+    console_init(framebuffer_available == 0 ? &framebuffer : 0);
+    if (framebuffer_available == 0) {
+        vmm_set_boot_framebuffer((uintptr_t)framebuffer.address,
+                                 (uintptr_t)framebuffer.pitch *
+                                     framebuffer.height);
+    }
     log_set_level(LOG_DEBUG);
     log_info("AukOS kernel entered x86_64 long mode");
     log_info("serial: COM1 initialized");
-    if (console_vga_8x16_ready()) {
-        log_info("console: VGA 80x25 text mode using 8x16 font");
+    if (console_framebuffer_ready()) {
+        log_info("console: high-resolution framebuffer using Terminus 8x20 font");
+    } else if (console_vga_8x20_ready()) {
+        log_info("console: VGA 80x20 text mode using Terminus 8x20 font");
     } else {
-        log_error("console: failed to configure VGA 8x16 font");
+        log_error("console: failed to configure console framebuffer/font");
     }
     idt_init();
     log_info("idt: loaded CPU exception table");

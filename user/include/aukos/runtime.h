@@ -34,6 +34,7 @@ int aukos_vix_pipe(int *read_fd, int *write_fd);
 int aukos_vix_dup2(int oldfd, int newfd);
 int aukos_vix_chdir(const char *path);
 int aukos_vix_getcwd(char *buf, size_t size);
+long aukos_vix_icmp_echo(const unsigned char address[4], int sequence);
 int aukos_vix_tty_begin_raw(void);
 int aukos_vix_tty_end_raw(void);
 int aukos_vix_tty_size(int *rows, int *columns);

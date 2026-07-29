@@ -25,19 +25,25 @@ USER_FILE_API_TEST := $(USER_DIR)/file_api_test.elf
 USER_VIX_HELLO := $(USER_DIR)/language_hello.elf
 USER_VIX_RUNTIME_TEST := $(USER_DIR)/language_runtime_test.elf
 USER_ED := $(USER_DIR)/ed.elf
+USER_CLEAR := $(USER_DIR)/clear.elf
 USER_TOUCH := $(USER_DIR)/touch.elf
+USER_PING := $(USER_DIR)/ping.elf
 USER_VIXC := $(USER_DIR)/vixc.elf
 USER_VIXC_TEST := $(USER_DIR)/vixc_test.elf
 USER_PERSISTENCE_TEST := $(USER_DIR)/persistence_test.elf
 USER_NASM_TEST := $(USER_DIR)/nasm_test.elf
 USER_VIX_HELLO_OBJ := $(USER_DIR)/hello.vix.o
 USER_ED_OBJ := $(USER_DIR)/ed.vix.o
+USER_CLEAR_OBJ := $(USER_DIR)/clear.vix.o
+USER_PING_OBJ := $(USER_DIR)/ping.vix.o
 USER_TOUCH_OBJ := $(USER_DIR)/touch.vix.o
 VIX_RUNTIME_OBJECT := $(BUILD_DIR)/vix-runtime/runtime.o
 E1000_VIX_OBJECT := $(BUILD_DIR)/kernel/driver/e1000_vix.o
 VIX_RUNTIME_BLOB := $(BUILD_DIR)/user/runtime_reloc.o
 USER_ED_BLOB := $(BUILD_DIR)/user/ed.o
+USER_CLEAR_BLOB := $(BUILD_DIR)/user/clear.o
 USER_TOUCH_BLOB := $(BUILD_DIR)/user/touch.o
+USER_PING_BLOB := $(BUILD_DIR)/user/ping.o
 USER_VIXC_BLOB := $(BUILD_DIR)/user/vixc.o
 USER_VIXC_TEST_BLOB := $(BUILD_DIR)/user/vixc_test.o
 USER_PERSISTENCE_TEST_BLOB := $(BUILD_DIR)/user/persistence_test.o
@@ -60,9 +66,9 @@ WORK_BASE_DISK := $(BUILD_DIR)/aukos-work-base.img
 WORK_DISK := $(BUILD_DIR)/aukos-work.img
 UDP_ECHO_SERVER := $(BUILD_DIR)/tools/udp_echo_server
 UDP_PCAP_CHECK := $(BUILD_DIR)/tools/check_udp_pcap
-VGA_FONT_SOURCE := assets/vga8x16.bin.gz.b64
-VGA_FONT_BIN := $(BUILD_DIR)/vga8x16.bin
-VGA_FONT_OBJ := $(BUILD_DIR)/vga8x16.o
+VGA_FONT_SOURCE := assets/terminus_vga8x20.bin.gz.b64
+VGA_FONT_BIN := $(BUILD_DIR)/terminus_vga8x20.bin
+VGA_FONT_OBJ := $(BUILD_DIR)/terminus_vga8x20.o
 QEMU_NET_ARGS := -netdev user,id=net0,net=10.0.2.0/24,dhcpstart=10.0.2.15 \
 	-device virtio-net-pci,netdev=net0,disable-modern=on,mac=52:54:00:12:34:56
 QEMU_E1000_NET_ARGS := -netdev user,id=net0,net=10.0.2.0/24,dhcpstart=10.0.2.15 \
@@ -138,7 +144,8 @@ LDFLAGS_UEFI := -nostdlib -static -z max-page-size=0x1000 -T arch/x86_64/linker_
 
 EFI_CFLAGS := -target x86_64-unknown-none -std=c17 -ffreestanding -fno-stack-protector \
 	-fpic -mno-red-zone -fshort-wchar -Wall -Wextra -Werror \
-	-I$(EFI_INCLUDE_DIR) -I$(EFI_ARCH_INCLUDE_DIR) -DEFI_FUNCTION_WRAPPER
+	-I$(EFI_INCLUDE_DIR) -I$(EFI_ARCH_INCLUDE_DIR) -Ikernel/include \
+	-DEFI_FUNCTION_WRAPPER
 EFI_LDFLAGS := -nostdlib -static -T $(EFI_LDS) \
 	$(EFI_CRT0) -L$(EFI_LIB_DIR) -lefi -lgnuefi
 
@@ -173,6 +180,7 @@ KERNEL_OBJS := \
 	$(BUILD_DIR)/kernel/serial.o \
 	$(BUILD_DIR)/kernel/syscall.o \
 	$(BUILD_DIR)/kernel/task.o \
+	$(BUILD_DIR)/kernel/tcp_socket.o \
 	$(BUILD_DIR)/kernel/timer.o \
 	$(BUILD_DIR)/kernel/user.o \
 	$(BUILD_DIR)/kernel/vfs.o \
@@ -195,7 +203,9 @@ KERNEL_OBJS := \
 	$(BUILD_DIR)/user/language_hello.o \
 	$(BUILD_DIR)/user/language_runtime_test.o \
 	$(USER_ED_BLOB) \
+	$(USER_CLEAR_BLOB) \
 	$(USER_TOUCH_BLOB) \
+	$(USER_PING_BLOB) \
 	$(USER_VIXC_BLOB) \
 	$(USER_VIXC_TEST_BLOB) \
 	$(USER_PERSISTENCE_TEST_BLOB) \
@@ -236,6 +246,7 @@ KERNEL_UEFI_OBJS := \
 	$(BUILD_DIR)/kernel/serial.o \
 	$(BUILD_DIR)/kernel/syscall.o \
 	$(BUILD_DIR)/kernel/task.o \
+	$(BUILD_DIR)/kernel/tcp_socket.o \
 	$(BUILD_DIR)/kernel/timer.o \
 	$(BUILD_DIR)/kernel/user.o \
 	$(BUILD_DIR)/kernel/vfs.o \
@@ -258,8 +269,10 @@ KERNEL_UEFI_OBJS := \
 	$(BUILD_DIR)/user/language_hello.o \
 	$(BUILD_DIR)/user/language_runtime_test.o \
 	$(USER_ED_BLOB) \
+	$(USER_CLEAR_BLOB) \
 	$(USER_TOUCH_BLOB) \
 	$(USER_VIXC_BLOB) \
+	$(USER_PING_BLOB) \
 	$(USER_VIXC_TEST_BLOB) \
 	$(USER_PERSISTENCE_TEST_BLOB) \
 	$(USER_NASM_TEST_BLOB) \
@@ -268,9 +281,9 @@ KERNEL_UEFI_OBJS := \
 	$(BUILD_DIR)/user/toybox.o \
 	$(VGA_FONT_OBJ)
 
-.PHONY: all iso iso-uefi run run-e1000 run-uefi run-debug smoke smoke-uefi check test toybox-host toybox-aukos-config toybox-aukos-port nasm-host nasm-aukos-port host-vixc clean
+.PHONY: all iso iso-uefi run run-e1000 run-uefi run-debug smoke smoke-uefi check test toybox-host toybox-aukos-config toybox-aukos-port nasm-host nasm-aukos-port curl-aukos-port host-vixc clean
 
-all: $(KERNEL_UEFI) $(TOYBOX_AUKOS_BIN) $(VIRTIO_DISK) $(WORK_BASE_DISK) $(WORK_DISK)S_BIN) $(VIRTIO_DISK) $(WORK_BASE_DISK) $(WORK_DISK)
+all: $(KERNEL_UEFI) $(TOYBOX_AUKOS_BIN) $(VIRTIO_DISK) $(WORK_BASE_DISK) $(WORK_DISK)
 
 iso: $(ISO)
 
@@ -352,6 +365,8 @@ test: $(HOST_TEST_DIR)/ring_buffer_test \
 	$(HOST_TEST_DIR)/virtio_net_test \
 	$(HOST_TEST_DIR)/udp_packet_test \
 	$(HOST_TEST_DIR)/udp_socket_test \
+	$(HOST_TEST_DIR)/tcp_packet_test \
+	$(HOST_TEST_DIR)/tcp_socket_test \
 	$(HOST_TEST_DIR)/shell_parse_test \
 	$(HOST_TEST_DIR)/libgen_test \
 	$(HOST_TEST_DIR)/stdio_format_test \
@@ -396,6 +411,8 @@ test: $(HOST_TEST_DIR)/ring_buffer_test \
 	$(Q)$(HOST_TEST_DIR)/virtio_net_test
 	$(Q)$(HOST_TEST_DIR)/udp_packet_test
 	$(Q)$(HOST_TEST_DIR)/udp_socket_test
+	$(Q)$(HOST_TEST_DIR)/tcp_packet_test
+	$(Q)$(HOST_TEST_DIR)/tcp_socket_test
 	$(Q)$(HOST_TEST_DIR)/shell_parse_test
 	$(Q)$(HOST_TEST_DIR)/libgen_test
 	$(Q)$(HOST_TEST_DIR)/stdio_format_test
@@ -434,6 +451,14 @@ $(NASM_AUKOS): ports/nasm/Makefile ports/nasm/sources.mk \
 		$(NASM_UPSTREAM_FILES) $(TOYBOX_LIBC_OBJS)
 	$(Q)$(MAKE) -C ports/nasm -f Makefile aukos
 	$(Q)sh tools/check_nasm_artifact.sh $@
+
+CURL_AUKOS := $(BUILD_DIR)/curl-aukos/curl.elf
+
+curl-aukos-port: $(CURL_AUKOS)
+
+$(CURL_AUKOS): ports/curl/Makefile ports/curl/sources.mk \
+		ports/curl/config/config.h $(TOYBOX_LIBC_OBJS)
+	$(Q)$(MAKE) -C ports/curl -f Makefile aukos
 
 $(TOYBOX_HOST): $(TOYBOX_DIR)/.config
 	$(Q)$(MAKE) -C $(TOYBOX_DIR)
@@ -515,7 +540,8 @@ $(BOOTLOADER_ELF): $(BUILD_DIR)/boot/uefi/bootloader.o $(EFI_LDS) $(EFI_CRT0)
 	$(Q)mkdir -p $(dir $@)
 	$(Q)$(LD) $(EFI_LDFLAGS) -o $@ $(BUILD_DIR)/boot/uefi/bootloader.o
 
-$(BUILD_DIR)/boot/uefi/bootloader.o: boot/uefi/bootloader.c
+$(BUILD_DIR)/boot/uefi/bootloader.o: boot/uefi/bootloader.c \
+		kernel/include/aukos/boot_framebuffer.h
 	$(Q)printf '%s\n' '$(quiet_cmd_cc)'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)$(CC) $(EFI_CFLAGS) -c $< -o $@
@@ -618,6 +644,14 @@ $(USER_ED): $(USER_ED_OBJ) $(USER_DIR)/entry.o \
 		$(USER_DIR)/entry.o $(USER_DIR)/runtime.o \
 		$(USER_ED_OBJ) $(VIXC_LANGUAGE_RUNTIME_OBJECT) $(VIX_RUNTIME_LIBC_OBJS)
 
+$(USER_CLEAR): $(USER_CLEAR_OBJ) $(USER_DIR)/entry.o \
+		$(USER_DIR)/runtime.o $(VIXC_LANGUAGE_RUNTIME_OBJECT) \
+		$(VIX_RUNTIME_LIBC_OBJS) user/linker.ld
+	$(Q)printf '%s\n' '$(quiet_cmd_userld)'
+	$(Q)$(LD) -nostdlib -static -T user/linker.ld -o $@ \
+		$(USER_DIR)/entry.o $(USER_DIR)/runtime.o \
+		$(USER_CLEAR_OBJ) $(VIXC_LANGUAGE_RUNTIME_OBJECT) $(VIX_RUNTIME_LIBC_OBJS)
+
 $(USER_TOUCH): $(USER_TOUCH_OBJ) $(USER_DIR)/entry.o \
 		$(USER_DIR)/runtime.o $(VIXC_LANGUAGE_RUNTIME_OBJECT) \
 		$(VIX_RUNTIME_LIBC_OBJS) user/linker.ld
@@ -625,6 +659,14 @@ $(USER_TOUCH): $(USER_TOUCH_OBJ) $(USER_DIR)/entry.o \
 	$(Q)$(LD) -nostdlib -static -T user/linker.ld -o $@ \
 		$(USER_DIR)/entry.o $(USER_DIR)/runtime.o \
 		$(USER_TOUCH_OBJ) $(VIXC_LANGUAGE_RUNTIME_OBJECT) $(VIX_RUNTIME_LIBC_OBJS)
+
+$(USER_PING): $(USER_PING_OBJ) $(USER_DIR)/entry.o \
+		$(USER_DIR)/runtime.o $(VIXC_LANGUAGE_RUNTIME_OBJECT) \
+		$(VIX_RUNTIME_LIBC_OBJS) user/linker.ld
+	$(Q)printf '%s\n' '$(quiet_cmd_userld)'
+	$(Q)$(LD) -nostdlib -static -T user/linker.ld -o $@ \
+		$(USER_DIR)/entry.o $(USER_DIR)/runtime.o \
+		$(USER_PING_OBJ) $(VIXC_LANGUAGE_RUNTIME_OBJECT) $(VIX_RUNTIME_LIBC_OBJS)
 
 host-vixc: $(VIXC_HOST_TARGET)
 
@@ -721,7 +763,17 @@ $(USER_ED_OBJ): user/ed.vix $(VIXC_GATE)
 	$(Q)mkdir -p $(dir $@)
 	$(Q)ulimit -s 65536 && $(VIXC) --target $(VIX_TARGET) -obj $< -o $@
 
+$(USER_CLEAR_OBJ): user/clear.vix $(VIXC_GATE)
+	$(Q)printf '%s\n' 'VIXC    $@'
+	$(Q)mkdir -p $(dir $@)
+	$(Q)ulimit -s 65536 && $(VIXC) --target $(VIX_TARGET) -obj $< -o $@
+
 $(USER_TOUCH_OBJ): user/touch.vix $(VIXC_GATE)
+	$(Q)printf '%s\n' 'VIXC    $@'
+	$(Q)mkdir -p $(dir $@)
+	$(Q)ulimit -s 65536 && $(VIXC) --target $(VIX_TARGET) -obj $< -o $@
+
+$(USER_PING_OBJ): user/ping.vix $(VIXC_GATE)
 	$(Q)printf '%s\n' 'VIXC    $@'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)ulimit -s 65536 && $(VIXC) --target $(VIX_TARGET) -obj $< -o $@
@@ -830,7 +882,15 @@ $(USER_ED_BLOB): $(USER_ED)
 	$(Q)printf '%s\n' '$(quiet_cmd_binobj)'
 	$(Q)$(LD) -m elf_x86_64 -r -b binary -o $@ $<
 
+$(USER_CLEAR_BLOB): $(USER_CLEAR)
+	$(Q)printf '%s\n' '$(quiet_cmd_binobj)'
+	$(Q)$(LD) -m elf_x86_64 -r -b binary -o $@ $<
+
 $(USER_TOUCH_BLOB): $(USER_TOUCH)
+	$(Q)printf '%s\n' '$(quiet_cmd_binobj)'
+	$(Q)$(LD) -m elf_x86_64 -r -b binary -o $@ $<
+
+$(USER_PING_BLOB): $(USER_PING)
 	$(Q)printf '%s\n' '$(quiet_cmd_binobj)'
 	$(Q)$(LD) -m elf_x86_64 -r -b binary -o $@ $<
 
@@ -867,7 +927,7 @@ $(VGA_FONT_BIN): $(VGA_FONT_SOURCE)
 	$(Q)printf '%s\n' 'FONT    $@'
 	$(Q)mkdir -p $(dir $@)
 	$(Q)base64 -d $< | gzip -dc > $@
-	$(Q)test "$$(wc -c < $@)" -eq 4096
+	$(Q)test "$$(wc -c < $@)" -eq 5120
 
 $(VGA_FONT_OBJ): $(VGA_FONT_BIN)
 	$(Q)printf '%s\n' '$(quiet_cmd_binobj)'
@@ -1027,6 +1087,20 @@ $(HOST_TEST_DIR)/udp_socket_test: tests/udp_socket_test.c kernel/udp_socket.c \
 	$(Q)mkdir -p $(dir $@)
 	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel/include \
 		tests/udp_socket_test.c kernel/udp_socket.c -o $@
+
+$(HOST_TEST_DIR)/tcp_packet_test: tests/tcp_packet_test.c kernel/net_packets.c \
+		kernel/include/aukos/net_packets.h
+	$(call cmd,hostcc)
+	$(Q)mkdir -p $(dir $@)
+	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel/include \
+		tests/tcp_packet_test.c kernel/net_packets.c -o $@
+
+$(HOST_TEST_DIR)/tcp_socket_test: tests/tcp_socket_test.c kernel/tcp_socket.c \
+		kernel/include/aukos/tcp_socket.h
+	$(call cmd,hostcc)
+	$(Q)mkdir -p $(dir $@)
+	$(Q)$(CC) -std=c17 -Wall -Wextra -Werror -Ikernel/include \
+		tests/tcp_socket_test.c kernel/tcp_socket.c -o $@
 
 $(HOST_TEST_DIR)/shell_parse_test: tests/shell_parse_test.c user/shell_parse.c \
 		user/include/aukos/shell_parse.h

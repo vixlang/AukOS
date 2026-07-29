@@ -16,6 +16,13 @@ multiboot_header:
     dd MB2_ARCH_I386 ;; start from 32位保护
     dd MB2_HEADER_LENGTH
     dd MB2_CHECKSUM
+    dw 5
+    dw 0
+    dd 20
+    dd 1024
+    dd 768
+    dd 32
+    align 8
     dw 0
     dw 0
     dd 8
@@ -101,8 +108,8 @@ pml4_table:
     resq 512
 pdpt_table:
     resq 512
-pd_table:
-    resq 512
+pd_tables:
+    resq 512 * 4
 stack_bottom:
     resb 16384
 stack_top:
@@ -118,18 +125,26 @@ setup_page_tables:
     or eax, PRESENT | WRITABLE
     mov [pml4_table], eax
 
-    mov eax, pd_table
+    mov ecx, 0
+.map_pdpt:
+    mov eax, ecx
+    shl eax, 12
+    add eax, pd_tables
     or eax, PRESENT | WRITABLE
-    mov [pdpt_table], eax
+    mov [pdpt_table + ecx * 8], eax
+    mov dword [pdpt_table + ecx * 8 + 4], 0
+    inc ecx
+    cmp ecx, 4
+    jne .map_pdpt
 
     mov ecx, 0
 .map_pd:
     mov eax, ecx
     shl eax, 21
     or eax, PRESENT | WRITABLE | HUGE_PAGE
-    mov [pd_table + ecx * 8], eax
-    mov dword [pd_table + ecx * 8 + 4], 0
+    mov [pd_tables + ecx * 8], eax
+    mov dword [pd_tables + ecx * 8 + 4], 0
     inc ecx
-    cmp ecx, 512
+    cmp ecx, 2048
     jne .map_pd
     ret

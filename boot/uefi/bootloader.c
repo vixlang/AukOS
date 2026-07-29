@@ -1,7 +1,87 @@
 #include <efi.h>
 #include <efilib.h>
+#include <aukos/boot_framebuffer.h>
 
 #define KERNEL_PATH L"\\EFI\\AUKOS\\KERNEL.ELF"
+#define TARGET_WIDTH 1024u
+#define TARGET_HEIGHT 768u
+
+static int framebuffer_pixel_format(EFI_GRAPHICS_PIXEL_FORMAT pixel_format,
+                                    struct boot_framebuffer *framebuffer)
+{
+    if (pixel_format == PixelBlueGreenRedReserved8BitPerColor) {
+        framebuffer->red_position = 16u;
+        framebuffer->green_position = 8u;
+        framebuffer->blue_position = 0u;
+        framebuffer->format = BOOT_FRAMEBUFFER_FORMAT_RGB;
+        return 0;
+    }
+    if (pixel_format == PixelRedGreenBlueReserved8BitPerColor) {
+        framebuffer->red_position = 0u;
+        framebuffer->green_position = 8u;
+        framebuffer->blue_position = 16u;
+        framebuffer->format = BOOT_FRAMEBUFFER_FORMAT_BGR;
+        return 0;
+    }
+    return -1;
+}
+
+static EFI_STATUS configure_framebuffer(struct boot_framebuffer *framebuffer)
+{
+    EFI_GRAPHICS_OUTPUT_PROTOCOL *gop;
+    EFI_STATUS status;
+    UINT32 selected_mode;
+    int selected = 0;
+
+    framebuffer->address = 0;
+    status = uefi_call_wrapper(BS->LocateProtocol, 3,
+                               &gEfiGraphicsOutputProtocolGuid, NULL,
+                               (void **)&gop);
+    if (EFI_ERROR(status)) {
+        return status;
+    }
+
+    selected_mode = gop->Mode->Mode;
+    for (UINT32 mode = 0; mode < gop->Mode->MaxMode; mode++) {
+        EFI_GRAPHICS_OUTPUT_MODE_INFORMATION *info;
+        UINTN info_size;
+
+        status = uefi_call_wrapper(gop->QueryMode, 4, gop, mode,
+                                   &info_size, &info);
+        if (EFI_ERROR(status)) {
+            continue;
+        }
+        if (info->HorizontalResolution == TARGET_WIDTH &&
+            info->VerticalResolution == TARGET_HEIGHT &&
+            info->PixelFormat != PixelBltOnly &&
+            info->PixelFormat != PixelFormatMax) {
+            selected_mode = mode;
+            selected = 1;
+        }
+        uefi_call_wrapper(BS->FreePool, 1, info);
+        if (selected) {
+            break;
+        }
+    }
+
+    if (selected_mode != gop->Mode->Mode) {
+        status = uefi_call_wrapper(gop->SetMode, 2, gop, selected_mode);
+        if (EFI_ERROR(status)) {
+            return status;
+        }
+    }
+
+    if (framebuffer_pixel_format(gop->Mode->Info->PixelFormat,
+                                 framebuffer) != 0) {
+        return EFI_UNSUPPORTED;
+    }
+    framebuffer->address = gop->Mode->FrameBufferBase;
+    framebuffer->pitch = gop->Mode->Info->PixelsPerScanLine * 4u;
+    framebuffer->width = gop->Mode->Info->HorizontalResolution;
+    framebuffer->height = gop->Mode->Info->VerticalResolution;
+    framebuffer->bits_per_pixel = 32u;
+    return EFI_SUCCESS;
+}
 
 static EFI_FILE_HANDLE open_volume(EFI_HANDLE image) {
     EFI_STATUS status;
@@ -150,9 +230,19 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image, EFI_SYSTEM_TABLE *st) {
     UINTN map_key;
     UINTN desc_size;
     UINT32 desc_ver;
+    struct boot_framebuffer framebuffer;
 
     InitializeLib(image, st);
     Print(L"AukOS UEFI Bootloader\n");
+
+    status = configure_framebuffer(&framebuffer);
+    if (EFI_ERROR(status)) {
+        Print(L"Framebuffer unavailable: %r\n", status);
+        framebuffer.address = 0;
+    } else {
+        Print(L"Framebuffer: %dx%d\n", framebuffer.width,
+              framebuffer.height);
+    }
 
     root = open_volume(image);
     if (!root) {
@@ -211,7 +301,9 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image, EFI_SYSTEM_TABLE *st) {
         return status;
     }
 
-    ((void (*)(UINT64, UINT64, UINT64))kernel_entry)((UINT64)mmap, (UINT64)mmap_size, (UINT64)desc_size);
+    ((void (*)(UINT64, UINT64, UINT64, const struct boot_framebuffer *))
+        kernel_entry)((UINT64)mmap, (UINT64)mmap_size, (UINT64)desc_size,
+                      &framebuffer);
 
     return EFI_SUCCESS;
 }

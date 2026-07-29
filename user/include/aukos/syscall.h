@@ -51,6 +51,7 @@
 #define AUKOS_SYS_READDIR 1026u
 #define AUKOS_SYS_FSINFO 1027u
 #define AUKOS_SYS_GETCWD 1028u
+#define AUKOS_SYS_ICMP_ECHO 1030u
 
 static inline uint64_t aukos_syscall1(uint64_t number, uint64_t arg0)
 {

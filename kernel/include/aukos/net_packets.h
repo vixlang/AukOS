@@ -12,11 +12,21 @@
 #define NET_IPV4_HEADER_SIZE 20u
 #define NET_ICMP_ECHO_HEADER_SIZE 8u
 #define NET_UDP_HEADER_SIZE 8u
+#define NET_TCP_HEADER_SIZE 20u
 #define NET_ETHERNET_MIN_FRAME_SIZE 60u
 #define NET_ETHERNET_MAX_FRAME_SIZE 1514u
 #define NET_UDP_MAX_PAYLOAD (NET_ETHERNET_MAX_FRAME_SIZE - \
                              NET_ETHERNET_HEADER_SIZE - \
                              NET_IPV4_HEADER_SIZE - NET_UDP_HEADER_SIZE)
+#define NET_TCP_MAX_PAYLOAD (NET_ETHERNET_MAX_FRAME_SIZE - \
+                             NET_ETHERNET_HEADER_SIZE - \
+                             NET_IPV4_HEADER_SIZE - NET_TCP_HEADER_SIZE)
+
+#define NET_TCP_FLAG_FIN 0x01u
+#define NET_TCP_FLAG_SYN 0x02u
+#define NET_TCP_FLAG_RST 0x04u
+#define NET_TCP_FLAG_PSH 0x08u
+#define NET_TCP_FLAG_ACK 0x10u
 
 #define NET_ETHERTYPE_IPV4 0x0800u
 #define NET_ETHERTYPE_ARP 0x0806u
@@ -37,6 +47,19 @@ struct net_udp_view {
     uint16_t source_port;
     uint16_t destination_port;
     int checksum_present;
+};
+
+struct net_tcp_view {
+    const uint8_t *source_ip;
+    const uint8_t *destination_ip;
+    const uint8_t *payload;
+    size_t payload_length;
+    uint16_t source_port;
+    uint16_t destination_port;
+    uint32_t sequence;
+    uint32_t acknowledgment;
+    uint16_t window;
+    uint8_t flags;
 };
 
 uint16_t net_load_be16(const uint8_t *source);
@@ -95,5 +118,23 @@ int net_parse_udp_datagram(
     const uint8_t expected_source_ip[NET_IPV4_ADDRESS_SIZE],
     uint16_t expected_destination_port, uint16_t expected_source_port,
     struct net_udp_view *view);
+int net_build_tcp_segment(
+    uint8_t *frame, size_t capacity,
+    const uint8_t local_mac[NET_MAC_SIZE],
+    const uint8_t destination_mac[NET_MAC_SIZE],
+    const uint8_t local_ip[NET_IPV4_ADDRESS_SIZE],
+    const uint8_t destination_ip[NET_IPV4_ADDRESS_SIZE],
+    uint16_t ip_identification, uint16_t source_port,
+    uint16_t destination_port, uint32_t sequence, uint32_t acknowledgment,
+    uint8_t flags, uint16_t window, const uint8_t *payload,
+    size_t payload_length, size_t *frame_length);
+int net_parse_tcp_segment(
+    const uint8_t *frame, size_t frame_length,
+    const uint8_t destination_mac[NET_MAC_SIZE],
+    const uint8_t expected_source_mac[NET_MAC_SIZE],
+    const uint8_t destination_ip[NET_IPV4_ADDRESS_SIZE],
+    const uint8_t expected_source_ip[NET_IPV4_ADDRESS_SIZE],
+    uint16_t expected_destination_port, uint16_t expected_source_port,
+    struct net_tcp_view *view);
 
 #endif

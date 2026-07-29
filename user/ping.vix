@@ -1,0 +1,86 @@
+extern "C"
+{
+    fn printf(format: string, ...): i32
+    fn malloc(size: usize): string
+    fn aukos_vix_icmp_echo(address: string, sequence: i32): i64
+}
+
+fn parse_ipv4(text: string): string
+{
+    let address = malloc(4)
+    if (address == nil) { return nil }
+
+    let mut index = 0
+    let mut part = 0
+    while (part < 4)
+    {
+        let mut value = 0
+        let mut digits = 0
+        while (index < text.length and text[index] >= '0' and text[index] <= '9')
+        {
+            value = value * 10 + text[index] - '0'
+            digits += 1
+            index += 1
+        }
+        if (digits == 0 or value > 255) { return nil }
+        address[part] = value
+        part += 1
+
+        if (part < 4)
+        {
+            if (index >= text.length or text[index] != '.') { return nil }
+            index += 1
+        }
+    }
+    if (index != text.length) { return nil }
+    return address
+}
+
+fn print_usage()
+{
+    printf("usage: ping IPv4_ADDRESS\n")
+}
+
+fn main(argc: i32, argv: &string, envp: &string): i32
+{
+    if (argc == 2 and (argv[1] == "-h" or argv[1] == "--help"))
+    {
+        print_usage()
+        return 0
+    }
+    if (argc != 2)
+    {
+        print_usage()
+        return 2
+    }
+
+    let destination = parse_ipv4(argv[1])
+    if (destination == nil)
+    {
+        printf("ping: invalid IPv4 address: %s\n", argv[1])
+        return 2
+    }
+
+    let mut received = 0
+    printf("PING %s: 10 data bytes\n", argv[1])
+    for (sequence in 1 .. 5)
+    {
+        let elapsed_ticks = aukos_vix_icmp_echo(destination, sequence)
+        if (elapsed_ticks < 0)
+        {
+            printf("timeout from %s: icmp_seq=%d\n", argv[1], sequence)
+        }
+        else
+        {
+            received += 1
+            printf("reply from %s: icmp_seq=%d time=%d ms\n", argv[1],
+                   sequence, elapsed_ticks * 10)
+        }
+    }
+
+    printf("--- %s ping statistics ---\n", argv[1])
+    printf("4 packets transmitted, %d received, %d%% packet loss\n",
+           received, (4 - received) * 25)
+    if (received == 0) { return 1 }
+    return 0
+}

@@ -7,6 +7,7 @@
 
 static int file_close_count;
 static int socket_close_count;
+static int tcp_close_count;
 
 int vfs_close(struct vfs_file *file)
 {
@@ -23,6 +24,11 @@ void net_udp_socket_close(struct udp_socket *socket)
     }
 }
 
+void net_tcp_socket_close(struct tcp_socket *socket)
+{
+    if (socket) tcp_close_count++;
+}
+
 static int expect(int condition)
 {
     return condition ? 0 : 1;
@@ -32,8 +38,10 @@ int main(void)
 {
     struct vfs_file file = {0};
     struct udp_socket *socket = (struct udp_socket *)(void *)&socket_close_count;
+    struct tcp_socket *tcp = (struct tcp_socket *)(void *)&tcp_close_count;
     struct descriptor *file_descriptor;
     struct descriptor *socket_descriptor;
+    struct descriptor *tcp_descriptor;
     struct descriptor *standard_descriptor;
     struct descriptor *pipe_read_descriptor;
     struct descriptor *pipe_write_descriptor;
@@ -45,16 +53,19 @@ int main(void)
     pipe_init();
     file_descriptor = descriptor_create_vfs(&file);
     socket_descriptor = descriptor_create_udp(socket);
+    tcp_descriptor = descriptor_create_tcp(tcp);
     standard_descriptor = descriptor_create_standard(1u);
-    failures += expect(file_descriptor && socket_descriptor &&
+    failures += expect(file_descriptor && socket_descriptor && tcp_descriptor &&
                        standard_descriptor);
     failures += expect(descriptor_vfs_file(file_descriptor) == &file);
     failures += expect(descriptor_udp_socket(file_descriptor) == 0);
     failures += expect(descriptor_udp_socket(socket_descriptor) == socket);
+    failures += expect(descriptor_tcp_socket(tcp_descriptor) == tcp);
+    failures += expect(descriptor_tcp_socket(socket_descriptor) == 0);
     failures += expect(descriptor_vfs_file(socket_descriptor) == 0);
     failures += expect(descriptor_standard_fd(standard_descriptor) == 1 &&
                        descriptor_standard_fd(file_descriptor) == -1);
-    failures += expect(descriptor_live_count() == 3u);
+    failures += expect(descriptor_live_count() == 4u);
 
     failures += expect(descriptor_retain(file_descriptor) == 0 &&
                        file_descriptor->references == 2u);
@@ -63,12 +74,13 @@ int main(void)
                        file_descriptor->references == 1u);
     descriptor_release(file_descriptor);
     failures += expect(file_close_count == 1 &&
-                       descriptor_live_count() == 2u);
+                        descriptor_live_count() == 3u);
     descriptor_release(file_descriptor);
     failures += expect(file_close_count == 1);
     descriptor_release(socket_descriptor);
+    descriptor_release(tcp_descriptor);
     descriptor_release(standard_descriptor);
-    failures += expect(socket_close_count == 1 &&
+    failures += expect(socket_close_count == 1 && tcp_close_count == 1 &&
                        descriptor_live_count() == 0u);
 
     pipe = pipe_allocate();

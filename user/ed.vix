@@ -590,10 +590,10 @@ fn visual_normal_key(editor: &Editor, key: i32)
             return
         }
     }
-    if (key == 'h') { editor.cursor_column -= 1 }
-    elif (key == 'l') { editor.cursor_column += 1 }
-    elif (key == 'j') { editor.current += 1 }
-    elif (key == 'k') { editor.current -= 1 }
+    if (key == 'h' or key == 130) { editor.cursor_column -= 1 }
+    elif (key == 'l' or key == 131) { editor.cursor_column += 1 }
+    elif (key == 'j' or key == 129) { editor.current += 1 }
+    elif (key == 'k' or key == 128) { editor.current -= 1 }
     elif (key == '0') { editor.cursor_column = 0 }
     elif (key == '$') { editor.cursor_column = visual_current_length(editor) }
     elif (key == 'G')
@@ -626,6 +626,10 @@ fn visual_normal_key(editor: &Editor, key: i32)
 fn visual_insert_key(editor: &Editor, key: i32)
 {
     editor.message = ""
+    if (key == 128) { editor.current -= 1; visual_clamp(editor); return }
+    if (key == 129) { editor.current += 1; visual_clamp(editor); return }
+    if (key == 130) { editor.cursor_column -= 1; visual_clamp(editor); return }
+    if (key == 131) { editor.cursor_column += 1; visual_clamp(editor); return }
     if (key == 27) { editor.mode = 0; return }
     if (key == 8 or key == 127) { visual_backspace(editor); return }
     if (key == 10 or key == 13) { visual_split_line(editor); return }
@@ -709,8 +713,8 @@ fn visual_smoke(editor: &Editor): i32
     let second = "def"
     for (index in 0 .. second.length) { visual_insert_key(editor, second[index]) }
     visual_insert_key(editor, 27)
-    visual_normal_key(editor, 'k')
-    visual_normal_key(editor, '0')
+    visual_normal_key(editor, 128)
+    visual_normal_key(editor, 130)
     visual_normal_key(editor, 'x')
     editor.mode = 2
     editor.command = "w /work/visual-smoke"
@@ -720,7 +724,7 @@ fn visual_smoke(editor: &Editor): i32
     printf("%c[0m%c[2J%c[H\n", 27, 27, 27)
 
     if (result != 0 or restored != 0 or editor.line_count != 2 or
-        editor.lines[0] != "bc" or editor.lines[1] != "def" or editor.dirty != 0)
+        editor.lines[0] != "ab" or editor.lines[1] != "def" or editor.dirty != 0)
     {
         printf("[ed_visual_test] FAIL edit\n")
         return 1

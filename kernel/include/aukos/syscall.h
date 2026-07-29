@@ -54,6 +54,7 @@
 #define SYS_READDIR 1026u
 #define SYS_FSINFO 1027u
 #define SYS_GETCWD 1028u
+#define SYS_ICMP_ECHO 1030u
 
 struct user_context;
 

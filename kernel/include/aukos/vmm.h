@@ -58,6 +58,7 @@ struct address_space {
 #define VMM_KERNEL_DIRECT_BASE 0xffff800000000000ull
 
 void vmm_init(void);
+void vmm_set_boot_framebuffer(uintptr_t physical_address, uintptr_t size);
 const struct address_space *vmm_kernel_address_space(void);
 uintptr_t vmm_kernel_direct_map(uintptr_t physical_address);
 int vmm_create_user_address_space(struct address_space *space);

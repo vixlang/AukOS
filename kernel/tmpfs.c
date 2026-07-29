@@ -603,8 +603,12 @@ void tmpfs_init(void)
     extern const unsigned char _binary_build_user_language_runtime_test_elf_end[];
     extern const unsigned char _binary_build_user_ed_elf_start[];
     extern const unsigned char _binary_build_user_ed_elf_end[];
+    extern const unsigned char _binary_build_user_clear_elf_start[];
+    extern const unsigned char _binary_build_user_clear_elf_end[];
     extern const unsigned char _binary_build_user_touch_elf_start[];
     extern const unsigned char _binary_build_user_touch_elf_end[];
+    extern const unsigned char _binary_build_user_ping_elf_start[];
+    extern const unsigned char _binary_build_user_ping_elf_end[];
     extern const unsigned char _binary_build_user_vixc_elf_start[];
     extern const unsigned char _binary_build_user_vixc_elf_end[];
     extern const unsigned char _binary_build_user_vixc_test_elf_start[];
@@ -655,7 +659,9 @@ void tmpfs_init(void)
     EMBED_EXEC(bin, "vix_hello", build_user_language_hello_elf);
     EMBED_EXEC(bin, "vix_runtime_test", build_user_language_runtime_test_elf);
     EMBED_EXEC(bin, "ed", build_user_ed_elf);
+    EMBED_EXEC(bin, "clear", build_user_clear_elf);
     EMBED_EXEC(bin, "touch", build_user_touch_elf);
+    EMBED_EXEC(bin, "ping", build_user_ping_elf);
     EMBED_EXEC(bin, "vixc", build_user_vixc_elf);
     EMBED_EXEC(bin, "vixc_test", build_user_vixc_test_elf);
     EMBED_EXEC(bin, "persistence_test", build_user_persistence_test_elf);

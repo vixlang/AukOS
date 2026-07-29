@@ -149,7 +149,9 @@ _Static_assert(sizeof(struct syscall_sockaddr_in) == 16u,
                "IPv4 socket address ABI size");
 
 #define SYSCALL_AF_INET 2u
+#define SYSCALL_SOCK_STREAM 1u
 #define SYSCALL_SOCK_DGRAM 2u
+#define SYSCALL_IPPROTO_TCP 6u
 #define SYSCALL_IPPROTO_UDP 17u
 
 static void copy_string(char *dest, const char *src, size_t max)
@@ -392,6 +394,7 @@ static uint64_t syscall_write(struct user_context *ctx, uint64_t fd,
     const char *message = (const char *)buffer_address;
     struct vfs_file *file;
     struct pipe_object *pipe;
+    struct tcp_socket *tcp;
     enum pipe_io_result pipe_result;
     size_t transferred;
     int standard_fd;
@@ -426,6 +429,15 @@ static uint64_t syscall_write(struct user_context *ctx, uint64_t fd,
         return UINT64_MAX;
     }
 
+    tcp = descriptor_tcp_socket(current_process->files[fd]);
+    if (tcp) {
+        if (net_tcp_socket_write(tcp, (const uint8_t *)buffer_address,
+                                 (size_t)length, &transferred) != 0) {
+            return UINT64_MAX;
+        }
+        return transferred;
+    }
+
     if (!(file = descriptor_vfs_file(current_process->files[fd]))) {
         return UINT64_MAX;
     }
@@ -441,7 +453,12 @@ static uint64_t syscall_read_stdin(uint64_t buffer_address, uint64_t length)
     int echo = (current_process->tty_lflag & SYSCALL_TTY_ECHO) != 0;
 
     while (count < length) {
-        char character = keyboard_read_char();
+        uint8_t character = keyboard_read_char();
+
+        if (canonical && character >= KEYBOARD_KEY_UP &&
+            character <= KEYBOARD_KEY_RIGHT) {
+            continue;
+        }
 
         if (canonical && character == '\b') {
             if (count > 0) {
@@ -454,10 +471,10 @@ static uint64_t syscall_read_stdin(uint64_t buffer_address, uint64_t length)
             continue;
         }
 
-        buffer[count++] = character;
+        buffer[count++] = (char)character;
         if (echo) {
-            serial_write((char[]){ character, '\0' });
-            console_put_char(character);
+            serial_write((char[]){ (char)character, '\0' });
+            console_put_char((char)character);
         }
 
         if (!canonical || character == '\n') {
@@ -483,10 +500,10 @@ static uint64_t syscall_ioctl(uint64_t fd, uint64_t request,
     if (request == SYSCALL_TIOCGWINSZ) {
         struct syscall_winsize *size = (struct syscall_winsize *)argument;
 
-        size->rows = 25u;
-        size->columns = 80u;
-        size->x_pixels = 0u;
-        size->y_pixels = 0u;
+        size->rows = console_terminal_rows();
+        size->columns = console_terminal_columns();
+        size->x_pixels = console_width_pixels();
+        size->y_pixels = console_height_pixels();
         return 0;
     }
     if (request == SYSCALL_TCGETS) {
@@ -563,6 +580,7 @@ static uint64_t syscall_read(struct user_context *ctx, uint64_t fd,
 {
     struct vfs_file *file;
     struct pipe_object *pipe;
+    struct tcp_socket *tcp;
     enum pipe_io_result pipe_result;
     size_t transferred;
     int standard_fd;
@@ -592,6 +610,16 @@ static uint64_t syscall_read(struct user_context *ctx, uint64_t fd,
                                           pipe, SYS_READ);
         }
         return UINT64_MAX;
+    }
+
+
+    tcp = descriptor_tcp_socket(current_process->files[fd]);
+    if (tcp) {
+        if (net_tcp_socket_read(tcp, (uint8_t *)buffer_address,
+                                (size_t)length, &transferred) != 0) {
+            return UINT64_MAX;
+        }
+        return transferred;
     }
 
     if (!(file = descriptor_vfs_file(current_process->files[fd]))) {
@@ -989,13 +1017,17 @@ static uint64_t syscall_pipe(uint64_t pipefd_address)
 static uint64_t syscall_socket(uint64_t domain, uint64_t type,
                                uint64_t protocol)
 {
-    struct udp_socket *socket;
+    struct udp_socket *udp;
+    struct tcp_socket *tcp;
     struct descriptor *descriptor;
     uint32_t fd;
 
     if (!current_process || domain != SYSCALL_AF_INET ||
-        type != SYSCALL_SOCK_DGRAM ||
-        (protocol != 0u && protocol != SYSCALL_IPPROTO_UDP)) {
+        (type != SYSCALL_SOCK_DGRAM && type != SYSCALL_SOCK_STREAM) ||
+        (type == SYSCALL_SOCK_DGRAM && protocol != 0u &&
+         protocol != SYSCALL_IPPROTO_UDP) ||
+        (type == SYSCALL_SOCK_STREAM && protocol != 0u &&
+         protocol != SYSCALL_IPPROTO_TCP)) {
         return UINT64_MAX;
     }
     for (fd = 3u; fd < MAX_FD; fd++) {
@@ -1003,16 +1035,41 @@ static uint64_t syscall_socket(uint64_t domain, uint64_t type,
             break;
         }
     }
-    if (fd == MAX_FD || !(socket = net_udp_socket_create())) {
+    if (fd == MAX_FD) {
         return UINT64_MAX;
     }
-    descriptor = descriptor_create_udp(socket);
+    if (type == SYSCALL_SOCK_STREAM) {
+        tcp = net_tcp_socket_create();
+        descriptor = descriptor_create_tcp(tcp);
+        if (!descriptor) net_tcp_socket_close(tcp);
+    } else {
+        udp = net_udp_socket_create();
+        descriptor = descriptor_create_udp(udp);
+        if (!descriptor) net_udp_socket_close(udp);
+    }
     if (!descriptor) {
-        net_udp_socket_close(socket);
         return UINT64_MAX;
     }
     current_process->files[fd] = descriptor;
     return fd;
+}
+
+static uint64_t syscall_connect(uint64_t fd, uint64_t address_value,
+                                uint64_t address_length)
+{
+    const struct syscall_sockaddr_in *address =
+        (const struct syscall_sockaddr_in *)(uintptr_t)address_value;
+    struct tcp_socket *socket;
+
+    if (!current_process || fd >= MAX_FD || !address ||
+        address_length < sizeof(*address) ||
+        address->family != SYSCALL_AF_INET ||
+        !(socket = descriptor_tcp_socket(current_process->files[fd])) ||
+        net_tcp_socket_connect(socket, address->address,
+                               net_load_be16((const uint8_t *)&address->port)) != 0) {
+        return UINT64_MAX;
+    }
+    return 0;
 }
 
 static uint64_t syscall_bind(uint64_t fd, uint64_t address_value,
@@ -1094,6 +1151,22 @@ static uint64_t syscall_recvfrom(uint64_t fd, uint64_t buffer_value,
 static uint64_t syscall_socket_enosys(void)
 {
     return UINT64_MAX;
+}
+
+static uint64_t syscall_icmp_echo(uint64_t address, uint64_t sequence)
+{
+    uint8_t destination[NET_IPV4_ADDRESS_SIZE];
+    uint64_t elapsed_ticks;
+
+    if (address == 0 || sequence > UINT16_MAX) {
+        return UINT64_MAX;
+    }
+    memory_copy(destination, (const uint8_t *)(uintptr_t)address,
+                sizeof(destination));
+    if (net_icmp_echo(destination, (uint16_t)sequence, &elapsed_ticks) != 0) {
+        return UINT64_MAX;
+    }
+    return elapsed_ticks;
 }
 
 static int signal_default_is_ignored(uint32_t signal)
@@ -1766,6 +1839,9 @@ void syscall_dispatch(struct user_context *ctx)
     case SYS_GETCWD:
         ctx->rax = syscall_getcwd(arg0, arg1);
         break;
+    case SYS_ICMP_ECHO:
+        ctx->rax = syscall_icmp_echo(arg0, arg1);
+        break;
     case SYS_RT_SIGPENDING:
         ctx->rax = syscall_sigpending(arg0, arg1);
         break;
@@ -1782,6 +1858,8 @@ void syscall_dispatch(struct user_context *ctx)
         ctx->rax = syscall_recvfrom(arg0, arg1, arg2, arg3, arg4, arg5);
         break;
     case SYS_CONNECT:
+        ctx->rax = syscall_connect(arg0, arg1, arg2);
+        break;
     case SYS_LISTEN:
     case SYS_ACCEPT:
         ctx->rax = syscall_socket_enosys();

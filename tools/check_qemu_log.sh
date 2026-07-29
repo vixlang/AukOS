@@ -81,7 +81,7 @@ require_command_output_contains()
 }
 
 require_line "pci: found virtio-blk 1af4:1001 io=0x"
-require_line "console: VGA 80x25 text mode using 8x16 font"
+require_line "console: high-resolution framebuffer using Terminus 8x20 font"
 require_line "virtio-blk: virtio0 fixture self-test passed"
 require_line "virtio-blk: virtio1 work device initialized with FLUSH"
 require_line "ext4: mounted /ext4 read-only from virtio0"

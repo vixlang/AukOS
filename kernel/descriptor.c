@@ -57,6 +57,16 @@ struct descriptor *descriptor_create_udp(struct udp_socket *socket)
     return descriptor;
 }
 
+struct descriptor *descriptor_create_tcp(struct tcp_socket *socket)
+{
+    struct descriptor *descriptor;
+
+    if (!socket) return 0;
+    descriptor = descriptor_allocate(DESCRIPTOR_TCP_SOCKET);
+    if (descriptor) descriptor->object.tcp_socket = socket;
+    return descriptor;
+}
+
 struct descriptor *descriptor_create_standard(uint32_t standard_fd)
 {
     struct descriptor *descriptor;
@@ -114,6 +124,8 @@ void descriptor_release(struct descriptor *descriptor)
         vfs_close(descriptor->object.file);
     } else if (descriptor->type == DESCRIPTOR_UDP_SOCKET) {
         net_udp_socket_close(descriptor->object.udp_socket);
+    } else if (descriptor->type == DESCRIPTOR_TCP_SOCKET) {
+        net_tcp_socket_close(descriptor->object.tcp_socket);
     } else if (descriptor->type == DESCRIPTOR_PIPE_READ) {
         pipe_endpoint_close(descriptor->object.pipe, PIPE_READ_END);
     } else if (descriptor->type == DESCRIPTOR_PIPE_WRITE) {
@@ -137,6 +149,12 @@ struct udp_socket *descriptor_udp_socket(struct descriptor *descriptor)
         return 0;
     }
     return descriptor->object.udp_socket;
+}
+
+struct tcp_socket *descriptor_tcp_socket(struct descriptor *descriptor)
+{
+    if (!descriptor || descriptor->type != DESCRIPTOR_TCP_SOCKET) return 0;
+    return descriptor->object.tcp_socket;
 }
 
 int descriptor_standard_fd(struct descriptor *descriptor)

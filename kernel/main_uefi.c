@@ -26,21 +26,29 @@
 
 #include <stdint.h>
 
-void kernel_main(uint64_t memory_map_addr, uint64_t map_size, uint64_t desc_size) {
+void kernel_main(uint64_t memory_map_addr, uint64_t map_size, uint64_t desc_size,
+                 const struct boot_framebuffer *framebuffer) {
     struct memory_map memory_map;
     void *page;
     void *heap_object;
     void *tss_stack;
 
     serial_init();
-    console_init();
+    console_init(framebuffer);
+    if (framebuffer != 0 && framebuffer->address != 0) {
+        vmm_set_boot_framebuffer((uintptr_t)framebuffer->address,
+                                 (uintptr_t)framebuffer->pitch *
+                                     framebuffer->height);
+    }
     log_set_level(LOG_DEBUG);
     log_info("AukOS kernel entered x86_64 long mode (UEFI)");
     log_info("serial: COM1 initialized");
-    if (console_vga_8x16_ready()) {
-        log_info("console: VGA 80x25 text mode using 8x16 font");
+    if (console_framebuffer_ready()) {
+        log_info("console: high-resolution framebuffer using Terminus 8x20 font");
+    } else if (console_vga_8x20_ready()) {
+        log_info("console: VGA 80x20 text mode using Terminus 8x20 font");
     } else {
-        log_error("console: failed to configure VGA 8x16 font");
+        log_error("console: failed to configure console framebuffer/font");
     }
     idt_init();
     log_info("idt: loaded CPU exception table");

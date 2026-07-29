@@ -33,6 +33,7 @@
 #define IPV4_VERSION_IHL 0x45u
 #define IPV4_FLAG_DF 0x4000u
 #define IPV4_PROTOCOL_ICMP 1u
+#define IPV4_PROTOCOL_TCP 6u
 #define IPV4_PROTOCOL_UDP 17u
 
 #define ICMP_TYPE_OFFSET 0u
@@ -47,6 +48,16 @@
 #define UDP_DESTINATION_PORT_OFFSET 2u
 #define UDP_LENGTH_OFFSET 4u
 #define UDP_CHECKSUM_OFFSET 6u
+
+#define TCP_SOURCE_PORT_OFFSET 0u
+#define TCP_DESTINATION_PORT_OFFSET 2u
+#define TCP_SEQUENCE_OFFSET 4u
+#define TCP_ACKNOWLEDGMENT_OFFSET 8u
+#define TCP_DATA_OFFSET 12u
+#define TCP_FLAGS_OFFSET 13u
+#define TCP_WINDOW_OFFSET 14u
+#define TCP_CHECKSUM_OFFSET 16u
+#define TCP_URGENT_OFFSET 18u
 
 static void bytes_copy(uint8_t *destination, const uint8_t *source, size_t size)
 {
@@ -152,6 +163,23 @@ static uint16_t udp_checksum(const uint8_t source_ip[NET_IPV4_ADDRESS_SIZE],
     sum += IPV4_PROTOCOL_UDP;
     sum += (uint16_t)udp_length;
     sum = checksum_add(sum, udp, udp_length);
+    while ((sum >> 16) != 0u) {
+        sum = (sum & 0xffffu) + (sum >> 16);
+    }
+    return (uint16_t)~sum;
+}
+
+static uint16_t tcp_checksum(const uint8_t source_ip[NET_IPV4_ADDRESS_SIZE],
+                             const uint8_t destination_ip[NET_IPV4_ADDRESS_SIZE],
+                             const uint8_t *tcp, size_t tcp_length)
+{
+    uint32_t sum = 0u;
+
+    sum = checksum_add(sum, source_ip, NET_IPV4_ADDRESS_SIZE);
+    sum = checksum_add(sum, destination_ip, NET_IPV4_ADDRESS_SIZE);
+    sum += IPV4_PROTOCOL_TCP;
+    sum += (uint16_t)tcp_length;
+    sum = checksum_add(sum, tcp, tcp_length);
     while ((sum >> 16) != 0u) {
         sum = (sum & 0xffffu) + (sum >> 16);
     }
@@ -547,5 +575,142 @@ int net_parse_udp_datagram(
     view->payload = udp + NET_UDP_HEADER_SIZE;
     view->payload_length = udp_length - NET_UDP_HEADER_SIZE;
     view->checksum_present = checksum != 0u;
+    return 0;
+}
+
+int net_build_tcp_segment(
+    uint8_t *frame, size_t capacity,
+    const uint8_t local_mac[NET_MAC_SIZE],
+    const uint8_t destination_mac[NET_MAC_SIZE],
+    const uint8_t local_ip[NET_IPV4_ADDRESS_SIZE],
+    const uint8_t destination_ip[NET_IPV4_ADDRESS_SIZE],
+    uint16_t ip_identification, uint16_t source_port,
+    uint16_t destination_port, uint32_t sequence, uint32_t acknowledgment,
+    uint8_t flags, uint16_t window, const uint8_t *payload,
+    size_t payload_length, size_t *frame_length)
+{
+    size_t tcp_length = NET_TCP_HEADER_SIZE + payload_length;
+    size_t ipv4_length = NET_IPV4_HEADER_SIZE + tcp_length;
+    size_t wire_length = NET_ETHERNET_HEADER_SIZE + ipv4_length;
+    uint8_t *ipv4;
+    uint8_t *tcp;
+
+    if (!frame || !local_mac || !destination_mac || !local_ip ||
+        !destination_ip || !frame_length || source_port == 0u ||
+        destination_port == 0u || (!payload && payload_length != 0u) ||
+        payload_length > NET_TCP_MAX_PAYLOAD ||
+        (flags & ~(NET_TCP_FLAG_FIN | NET_TCP_FLAG_SYN | NET_TCP_FLAG_RST |
+                   NET_TCP_FLAG_PSH | NET_TCP_FLAG_ACK)) != 0u) {
+        return -1;
+    }
+    if (wire_length < NET_ETHERNET_MIN_FRAME_SIZE) {
+        wire_length = NET_ETHERNET_MIN_FRAME_SIZE;
+    }
+    if (wire_length > capacity || wire_length > NET_ETHERNET_MAX_FRAME_SIZE) {
+        return -1;
+    }
+
+    bytes_fill(frame, 0u, wire_length);
+    bytes_copy(frame + ETHERNET_DESTINATION_OFFSET, destination_mac,
+               NET_MAC_SIZE);
+    bytes_copy(frame + ETHERNET_SOURCE_OFFSET, local_mac, NET_MAC_SIZE);
+    net_store_be16(frame + ETHERNET_TYPE_OFFSET, NET_ETHERTYPE_IPV4);
+
+    ipv4 = frame + NET_ETHERNET_HEADER_SIZE;
+    ipv4[IPV4_VERSION_IHL_OFFSET] = IPV4_VERSION_IHL;
+    net_store_be16(ipv4 + IPV4_TOTAL_LENGTH_OFFSET, (uint16_t)ipv4_length);
+    net_store_be16(ipv4 + IPV4_IDENTIFICATION_OFFSET, ip_identification);
+    net_store_be16(ipv4 + IPV4_FLAGS_FRAGMENT_OFFSET, IPV4_FLAG_DF);
+    ipv4[IPV4_TTL_OFFSET] = 64u;
+    ipv4[IPV4_PROTOCOL_OFFSET] = IPV4_PROTOCOL_TCP;
+    bytes_copy(ipv4 + IPV4_SOURCE_OFFSET, local_ip, NET_IPV4_ADDRESS_SIZE);
+    bytes_copy(ipv4 + IPV4_DESTINATION_OFFSET, destination_ip,
+               NET_IPV4_ADDRESS_SIZE);
+    net_store_be16(ipv4 + IPV4_CHECKSUM_OFFSET,
+                   net_checksum(ipv4, NET_IPV4_HEADER_SIZE));
+
+    tcp = ipv4 + NET_IPV4_HEADER_SIZE;
+    net_store_be16(tcp + TCP_SOURCE_PORT_OFFSET, source_port);
+    net_store_be16(tcp + TCP_DESTINATION_PORT_OFFSET, destination_port);
+    net_store_be32(tcp + TCP_SEQUENCE_OFFSET, sequence);
+    net_store_be32(tcp + TCP_ACKNOWLEDGMENT_OFFSET, acknowledgment);
+    tcp[TCP_DATA_OFFSET] = 5u << 4;
+    tcp[TCP_FLAGS_OFFSET] = flags;
+    net_store_be16(tcp + TCP_WINDOW_OFFSET, window);
+    net_store_be16(tcp + TCP_URGENT_OFFSET, 0u);
+    bytes_copy(tcp + NET_TCP_HEADER_SIZE, payload, payload_length);
+    net_store_be16(tcp + TCP_CHECKSUM_OFFSET,
+                   tcp_checksum(local_ip, destination_ip, tcp, tcp_length));
+    *frame_length = wire_length;
+    return 0;
+}
+
+int net_parse_tcp_segment(
+    const uint8_t *frame, size_t frame_length,
+    const uint8_t destination_mac[NET_MAC_SIZE],
+    const uint8_t expected_source_mac[NET_MAC_SIZE],
+    const uint8_t destination_ip[NET_IPV4_ADDRESS_SIZE],
+    const uint8_t expected_source_ip[NET_IPV4_ADDRESS_SIZE],
+    uint16_t expected_destination_port, uint16_t expected_source_port,
+    struct net_tcp_view *view)
+{
+    struct net_ethernet_view ethernet;
+    const uint8_t *ipv4;
+    const uint8_t *tcp;
+    size_t ipv4_length;
+    size_t tcp_length;
+    size_t tcp_header_length;
+    uint16_t source_port;
+    uint16_t destination_port;
+
+    if (!destination_ip || !view ||
+        net_parse_ethernet(frame, frame_length, destination_mac, 0,
+                           &ethernet) != 0 ||
+        ethernet.ether_type != NET_ETHERTYPE_IPV4 ||
+        (expected_source_mac &&
+         !bytes_equal(ethernet.source, expected_source_mac, NET_MAC_SIZE)) ||
+        ethernet.payload_length < NET_IPV4_HEADER_SIZE) {
+        return -1;
+    }
+    ipv4 = ethernet.payload;
+    ipv4_length = net_load_be16(ipv4 + IPV4_TOTAL_LENGTH_OFFSET);
+    if (ipv4[IPV4_VERSION_IHL_OFFSET] != IPV4_VERSION_IHL ||
+        ipv4_length < NET_IPV4_HEADER_SIZE + NET_TCP_HEADER_SIZE ||
+        ipv4_length > ethernet.payload_length ||
+        !net_checksum_valid(ipv4, NET_IPV4_HEADER_SIZE) ||
+        (net_load_be16(ipv4 + IPV4_FLAGS_FRAGMENT_OFFSET) & 0xbfffu) != 0u ||
+        ipv4[IPV4_PROTOCOL_OFFSET] != IPV4_PROTOCOL_TCP ||
+        !bytes_equal(ipv4 + IPV4_DESTINATION_OFFSET, destination_ip,
+                     NET_IPV4_ADDRESS_SIZE) ||
+        (expected_source_ip &&
+         !bytes_equal(ipv4 + IPV4_SOURCE_OFFSET, expected_source_ip,
+                      NET_IPV4_ADDRESS_SIZE))) {
+        return -1;
+    }
+    tcp = ipv4 + NET_IPV4_HEADER_SIZE;
+    tcp_length = ipv4_length - NET_IPV4_HEADER_SIZE;
+    tcp_header_length = (size_t)(tcp[TCP_DATA_OFFSET] >> 4) * 4u;
+    source_port = net_load_be16(tcp + TCP_SOURCE_PORT_OFFSET);
+    destination_port = net_load_be16(tcp + TCP_DESTINATION_PORT_OFFSET);
+    if (tcp_header_length < NET_TCP_HEADER_SIZE ||
+        tcp_header_length > tcp_length || source_port == 0u ||
+        destination_port == 0u ||
+        (expected_source_port && source_port != expected_source_port) ||
+        (expected_destination_port &&
+         destination_port != expected_destination_port) ||
+        tcp_checksum(ipv4 + IPV4_SOURCE_OFFSET,
+                     ipv4 + IPV4_DESTINATION_OFFSET, tcp, tcp_length) != 0u) {
+        return -1;
+    }
+    view->source_ip = ipv4 + IPV4_SOURCE_OFFSET;
+    view->destination_ip = ipv4 + IPV4_DESTINATION_OFFSET;
+    view->source_port = source_port;
+    view->destination_port = destination_port;
+    view->sequence = net_load_be32(tcp + TCP_SEQUENCE_OFFSET);
+    view->acknowledgment = net_load_be32(tcp + TCP_ACKNOWLEDGMENT_OFFSET);
+    view->window = net_load_be16(tcp + TCP_WINDOW_OFFSET);
+    view->flags = tcp[TCP_FLAGS_OFFSET];
+    view->payload = tcp + tcp_header_length;
+    view->payload_length = tcp_length - tcp_header_length;
     return 0;
 }

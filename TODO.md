@@ -27,7 +27,7 @@
 - [x] 串口日志与 log level
   - [x] COM1 串口初始化与基础日志输出
   - [x] VGA text console 输出，避免 QEMU 图形窗口停在 GRUB 文本
-  - [x] BIOS/UEFI 统一 VGA 80x25 text mode，上传仓库内 8x16 字体到 plane 2
+  - [x] BIOS/UEFI 使用高分辨率 framebuffer 控制台，VGA 回退使用 Terminus 8x20 字体
   - [x] INFO 日志前缀统一为绿色 `[OK]`
 - [x] 物理内存探测（UEFI memory map 或 multiboot 信息）
 

@@ -2,6 +2,7 @@
 
 #include "include/aukos/log.h"
 #include "include/aukos/memory.h"
+#include "include/aukos/console.h"
 #include "include/aukos/serial.h"
 
 #include <stddef.h>
@@ -14,15 +15,28 @@
 #define PAGE_NO_EXECUTE (1ull << 63)
 #define PAGE_ADDR_MASK 0x000ffffffffff000ull
 #define LOW_MEMORY_MAP_SIZE 0x40000000ull
+#define HUGE_PAGE_SIZE 0x200000ull
 #define USER_SELFTEST_VA 0x0000004000000000ull
 #define MSR_EFER 0xc0000080u
 #define EFER_NXE (1ull << 11)
 
 static struct address_space kernel_address_space;
+static uintptr_t boot_framebuffer_physical;
+static uintptr_t boot_framebuffer_size;
 
 static uintptr_t align_up(uintptr_t value)
 {
     return (value + PAGE_SIZE - 1u) & ~(PAGE_SIZE - 1u);
+}
+
+static uintptr_t align_down_huge(uintptr_t value)
+{
+    return value & ~(HUGE_PAGE_SIZE - 1u);
+}
+
+static uintptr_t align_up_huge(uintptr_t value)
+{
+    return (value + HUGE_PAGE_SIZE - 1u) & ~(HUGE_PAGE_SIZE - 1u);
 }
 
 static uint64_t read_msr(uint32_t msr)
@@ -1057,9 +1071,17 @@ uintptr_t vmm_kernel_direct_map(uintptr_t physical_address)
     return VMM_KERNEL_DIRECT_BASE + physical_address;
 }
 
+void vmm_set_boot_framebuffer(uintptr_t physical_address, uintptr_t size)
+{
+    boot_framebuffer_physical = physical_address;
+    boot_framebuffer_size = size;
+}
+
 void vmm_init(void)
 {
     uint64_t *pml4 = alloc_page_table();
+    uintptr_t framebuffer_start;
+    uintptr_t framebuffer_end;
 
     write_msr(MSR_EFER, read_msr(MSR_EFER) | EFER_NXE);
 
@@ -1076,6 +1098,20 @@ void vmm_init(void)
     if (map_range_2m(pml4, VMM_KERNEL_DIRECT_BASE, 0, LOW_MEMORY_MAP_SIZE, PAGE_WRITABLE) != 0) {
         log_error("vmm: failed to map higher-half direct window");
         return;
+    }
+
+    if (boot_framebuffer_physical != 0 && boot_framebuffer_size != 0) {
+        framebuffer_start = align_down_huge(boot_framebuffer_physical);
+        framebuffer_end = align_up_huge(boot_framebuffer_physical +
+                                        boot_framebuffer_size);
+        if (map_range_2m(pml4, VMM_KERNEL_DIRECT_BASE + framebuffer_start,
+                         framebuffer_start, framebuffer_end - framebuffer_start,
+                         PAGE_WRITABLE) != 0) {
+            log_error("vmm: failed to map framebuffer direct window");
+            return;
+        }
+        console_remap_framebuffer(VMM_KERNEL_DIRECT_BASE +
+                                  boot_framebuffer_physical);
     }
 
     kernel_address_space.pml4_physical = (uintptr_t)pml4;

@@ -199,13 +199,6 @@ static void strip_newline(char *str)
     }
 }
 
-static void applet_clear(void)
-{
-    for (uint64_t i = 0; i < 32; i++) {
-        write_str("\n");
-    }
-}
-
 static void applet_help(void)
 {
     write_str("Welcome to the aush!\n");
@@ -474,9 +467,6 @@ static int run_command(char *line, uint64_t line_capacity)
     if (pipeline.stage_count == 1u && !command->input_path &&
         !command->output_path && string_equals(command->argv[0], "help")) {
         applet_help();
-    } else if (pipeline.stage_count == 1u && !command->input_path &&
-               !command->output_path && string_equals(command->argv[0], "clear")) {
-        applet_clear();
     } else if (pipeline.stage_count == 1u && !command->input_path &&
                !command->output_path && string_equals(command->argv[0], "fs")) {
         applet_fs();

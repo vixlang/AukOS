@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 #include <aukos/runtime.h>
+#include <aukos/syscall.h>
 
 static struct termios saved_terminal;
 static int terminal_saved;
@@ -196,4 +197,15 @@ int aukos_vix_chdir(const char *path) { return chdir(path); }
 int aukos_vix_getcwd(char *buf, size_t size)
 {
     return getcwd(buf, size) ? 0 : -1;
+}
+
+long aukos_vix_icmp_echo(const unsigned char address[4], int sequence)
+{
+    long result;
+
+    __asm__ volatile ("syscall" : "=a"(result)
+                      : "a"((long)AUKOS_SYS_ICMP_ECHO), "D"(address),
+                        "S"((long)sequence)
+                      : "rcx", "r11", "memory");
+    return result;
 }

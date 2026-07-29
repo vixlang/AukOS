@@ -10,8 +10,9 @@
 #define PS2_STATUS_OUTPUT_FULL 0x01u
 
 static int shift_pressed;
+static int extended_scancode;
 
-static char translate_scancode(uint8_t scancode)
+static uint8_t translate_scancode(uint8_t scancode)
 {
     static const char normal[128] = {
         [0x01] = 27,
@@ -62,19 +63,46 @@ static char translate_scancode(uint8_t scancode)
 void keyboard_init(void)
 {
     shift_pressed = 0;
+    extended_scancode = 0;
     log_info("keyboard: ps/2 polling input initialized");
 }
 
-char keyboard_read_char(void)
+uint8_t keyboard_read_char(void)
 {
-    char character;
+    uint8_t character;
+    uint8_t scancode;
 
     for (;;) {
         while ((inb(PS2_STATUS_PORT) & PS2_STATUS_OUTPUT_FULL) == 0) {
             __asm__ volatile ("pause");
         }
 
-        character = translate_scancode(inb(PS2_DATA_PORT));
+        scancode = inb(PS2_DATA_PORT);
+        if (scancode == 0xe0u) {
+            extended_scancode = 1;
+            continue;
+        }
+        if (extended_scancode) {
+            extended_scancode = 0;
+            if ((scancode & 0x80u) != 0) {
+                continue;
+            }
+            if (scancode == 0x48u) {
+                return KEYBOARD_KEY_UP;
+            }
+            if (scancode == 0x50u) {
+                return KEYBOARD_KEY_DOWN;
+            }
+            if (scancode == 0x4bu) {
+                return KEYBOARD_KEY_LEFT;
+            }
+            if (scancode == 0x4du) {
+                return KEYBOARD_KEY_RIGHT;
+            }
+            continue;
+        }
+
+        character = translate_scancode(scancode);
         if (character != 0) {
             return character;
         }
