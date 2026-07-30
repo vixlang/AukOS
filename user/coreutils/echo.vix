@@ -1,0 +1,29 @@
+extern "C"
+{
+    fn printf(format: string, ...): i32
+}
+fn main(argc:i32,argv:&string,envp:&string): i32
+{
+    let mut index = 1
+    let mut new = 1
+    if(index < argc and argv[index] == "-n")
+    {
+        new = 0
+        index += 1
+    }
+    let first = index
+    while(index < argc)
+    {
+        if(index > first)
+        {
+            printf(" ")
+        }
+        printf("%s",argv[index])
+        index += 1
+    }
+    if(new == 1)
+    {
+        printf("\n")
+    }
+    return 0
+}
